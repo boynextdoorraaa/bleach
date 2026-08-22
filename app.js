@@ -47,7 +47,7 @@
     { id: "choice", name: "追查机会", desc: "接触可能改变人生方向的矛盾、请求与抉择。", cost: 2, mark: "選" },
     { id: "accident", name: "承担危险任务", desc: "高风险事件更容易带来伤势、名声和组织关注。", cost: 2, mark: "危" },
     { id: "rest", name: "休息与恢复", desc: "降低疲劳并处理轻伤。结果通常确定，不进行检定。", cost: 1, mark: "静" },
-    { id: "month", name: "结束本月", desc: "结算收入、伤势、NPC计划、组织行动与世界事件。", cost: 0, mark: "月" },
+    { id: "month", name: "结束本月", desc: "必定触发月末事件，再结算收入、NPC计划与世界暗线。", cost: 0, mark: "月" },
   ];
 
   const mapNodes = [
@@ -98,6 +98,71 @@
 
   function uid(prefix = "evt") {
     return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+  }
+
+  function seededNumber(seed, offset, min = 38, max = 92) {
+    let hash = 2166136261;
+    const text = `${seed}:${offset}`;
+    for (let index = 0; index < text.length; index += 1) {
+      hash ^= text.charCodeAt(index);
+      hash = Math.imul(hash, 16777619);
+    }
+    return min + (Math.abs(hash) % (max - min + 1));
+  }
+
+  function startingAbilityIds(race) {
+    return {
+      human: ["F001", "F002"],
+      soul: ["F002"],
+      shinigami: ["Z001", "Z002"],
+      hollow: ["H004"],
+      quincy: ["Q003", "Q004", "Q006"],
+      fullbringer: ["F003", "F005"],
+    }[race] || [];
+  }
+
+  function ensureStateSchema(target) {
+    const seed = target.id || `${target.name}-${target.race}-${target.year}`;
+    target.version = 2;
+    const createdPotential = !target.potential;
+    target.potential ||= {
+      spiritCeiling: seededNumber(seed, "spirit"),
+      growthRate: seededNumber(seed, "growth"),
+      controlAffinity: seededNumber(seed, "control"),
+      battleInstinct: seededNumber(seed, "battle"),
+      perceptionGift: seededNumber(seed, "perception"),
+      hybridCompatibility: seededNumber(seed, "hybrid", 18, 88),
+    };
+    if (createdPotential && ["shinigami", "hollow", "quincy"].includes(target.race)) target.potential.spiritCeiling = clamp(target.potential.spiritCeiling + 8, 0, 100);
+    if (createdPotential && target.race === "fullbringer") target.potential.hybridCompatibility = clamp(target.potential.hybridCompatibility + 10, 0, 100);
+    target.abilities ||= [];
+    startingAbilityIds(target.race).forEach((id) => {
+      if (DATA.abilities.some((ability) => ability.id === id) && !target.abilities.includes(id)) target.abilities.push(id);
+    });
+    target.abilityMastery ||= {};
+    target.abilities.forEach((id, index) => {
+      target.abilityMastery[id] ??= clamp(48 + seededNumber(seed, `mastery-${id}`, 0, 32) - index * 4, 5, 100);
+    });
+    target.awakeningProgress ??= clamp(Math.round((target.spirit + target.potential.spiritCeiling) / 4), 0, 100);
+    target.breakthroughProgress ??= clamp((target.skills?.training || 0) * 8, 0, 100);
+    target.soulStability ??= clamp(72 + Math.round(target.potential.controlAffinity / 5) - Math.round(target.fatigue / 4), 0, 100);
+    target.monthlyRecord ||= [];
+    target.worldArc ||= {
+      title: {
+        substitute: "现世灵异异常与死神代行暗线",
+        "soul-society": "处刑争议与瀞灵廷内部裂痕",
+        arrancar: "破面活动与蓝染势力扩张",
+        fullbring: "死神代行历史与完现术者行动",
+        tybw: "见えざる帝国战争准备",
+      }[target.era] || "三界局势变化",
+      progress: clamp(Math.round((target.worldPressure || 20) * 0.55), 5, 82),
+      clues: 0,
+      deviation: 0,
+      majorEvents: 0,
+    };
+    target.stats ||= { body: 40, mind: 40, perception: 40, will: 40, social: 40, control: 30 };
+    target.skills ||= { life: 1, training: 0, combat: 0, research: 0, social: 0 };
+    return target;
   }
 
   function showToast(message) {
@@ -209,8 +274,8 @@
         tension: 0,
       };
     });
-    return {
-      version: 1,
+    return ensureStateSchema({
+      version: 2,
       id: uid("life"),
       name: options.name || "无名旅者",
       mode: options.mode,
@@ -255,7 +320,7 @@
       opportunities: [],
       recentEventIds: [],
       eventLocks: {},
-    };
+    });
   }
 
   function startLife() {
@@ -290,6 +355,7 @@
     $("#creator-screen").classList.add("hidden");
     $("#game-screen").classList.remove("hidden");
     renderAll();
+    renderActiveEvent();
   }
 
   function stateDate() {
@@ -345,6 +411,7 @@
 
   function renderAll() {
     renderHud();
+    renderStatus();
     renderActions();
     renderOpportunities();
     renderTimeline();
@@ -366,15 +433,143 @@
     $("#avatar-sigil").textContent = raceOptions[state.race].sigil;
     $("#ap-value").textContent = `${state.ap} / ${state.maxAp}`;
     $("#ap-pips").innerHTML = Array.from({ length: state.maxAp }, (_, index) => `<i class="${index < state.ap ? "on" : ""}"></i>`).join("");
-    $("#status-health").textContent = healthLabel(state.health);
-    $("#status-fatigue").textContent = fatigueLabel(state.fatigue);
-    $("#status-spirit").textContent = spiritLabel(state.spirit);
-    $("#status-reputation").textContent = reputationLabel(state.reputation);
+    $("#status-health").textContent = `${state.health} / 100`;
+    $("#status-fatigue").textContent = `${state.fatigue} / 100`;
+    $("#status-spirit").textContent = `${state.spirit} · ${spiritLabel(state.spirit)}`;
+    $("#status-reputation").textContent = `${state.reputation} · ${reputationLabel(state.reputation)}`;
     $("#status-money").textContent = state.realm === "human" ? `¥ ${state.money.toLocaleString()}` : `${state.money.toLocaleString()} 环`;
     $("#pressure-value").textContent = state.worldPressure;
     $("#pressure-label").textContent = pressureLabel(state.worldPressure);
     $("#world-headline").textContent = worldHeadline();
     $("#world-summary").textContent = `${realms[state.location]?.label || state.location} · ${state.role}。世界中的人物和组织正在继续自己的计划。`;
+    const live = currentProbabilityMetrics();
+    $("#sidebar-awaken-chance").textContent = `${live.awakening}%`;
+    $("#sidebar-encounter-chance").textContent = `${live.encounter}%`;
+    $("#sidebar-involvement-chance").textContent = `${live.involvement}%`;
+    $("#quick-status-strip").innerHTML = [
+      ["当前生命", `${state.health}%`, healthLabel(state.health)],
+      ["灵魂稳定", `${state.soulStability}%`, state.soulStability >= 70 ? "稳定" : "需要注意"],
+      ["能力觉醒", `${live.awakening}%`, `进度 ${state.awakeningProgress}%`],
+      ["危险遭遇", `${live.encounter}%`, pressureLabel(state.worldPressure)],
+    ].map(([label, value, note]) => `<div class="quick-status-item"><span>${label}</span><strong>${value}</strong><small>${note}</small></div>`).join("");
+  }
+
+  function rankFromValue(value) {
+    if (value >= 90) return "S";
+    if (value >= 75) return "A";
+    if (value >= 60) return "B";
+    if (value >= 45) return "C";
+    if (value >= 30) return "D";
+    return "E";
+  }
+
+  function rankDescription(rank) {
+    return { S: "极稀有", A: "优秀", B: "良好", C: "尚未成型", D: "普通", E: "薄弱" }[rank];
+  }
+
+  function statPotentialCap(key) {
+    const mapping = {
+      body: state.potential.battleInstinct,
+      mind: state.potential.growthRate,
+      perception: state.potential.perceptionGift,
+      will: state.potential.spiritCeiling,
+      social: Math.round((state.potential.perceptionGift + state.potential.growthRate) / 2),
+      control: state.potential.controlAffinity,
+    };
+    return clamp(mapping[key] + 20, 45, 110);
+  }
+
+  function currentProbabilityMetrics() {
+    const danger = realms[state.location]?.danger ?? 30;
+    const training = state.skills.training || 0;
+    return {
+      awakening: clamp(Math.round(state.awakeningProgress * 0.42 + state.potential.spiritCeiling * 0.3 + training * 2.5 - state.fatigue * 0.12), 1, 96),
+      breakthrough: clamp(Math.round(state.breakthroughProgress * 0.4 + state.potential.growthRate * 0.3 + state.potential.controlAffinity * 0.18 - state.fatigue * 0.18), 1, 95),
+      encounter: clamp(Math.round(danger * 0.5 + state.worldPressure * 0.27 + state.spirit * 0.17 + state.reputation * 0.08), 2, 97),
+      injury: clamp(Math.round(danger * 0.28 + state.worldPressure * 0.18 + state.fatigue * 0.32 + (100 - state.health) * 0.25 - state.stats.body * 0.18), 1, 92),
+      involvement: clamp(Math.round(state.spirit * 0.22 + state.reputation * 0.38 + state.worldPressure * 0.3 + state.knownNpcs.length * 0.8 - 18), 1, 98),
+      rareEvent: clamp(Math.round(state.potential.perceptionGift * 0.15 + state.worldPressure * 0.09 + state.reputation * 0.08 + (state.tone === "dramatic" ? 9 : 2)), 1, 45),
+    };
+  }
+
+  function monthlyEventDistribution() {
+    const live = currentProbabilityMetrics();
+    const riskyChoices = state.monthlyRecord.filter((item) => ["choice", "accident", "world", "exploration"].includes(item.category)).length;
+    let daily = 46 - state.worldPressure * 0.12 - riskyChoices * 2;
+    let minor = 32 + riskyChoices * 1.8 + state.fatigue * 0.05;
+    let clue = 17 + state.worldArc.progress * 0.09 + live.involvement * 0.06;
+    let major = 5 + state.worldArc.progress * 0.055 + live.involvement * 0.035;
+    if (state.worldArc.progress < 55) major *= 0.28;
+    if (state.worldArc.progress < 30) clue *= 0.65;
+    const total = daily + minor + clue + major;
+    minor = Math.round(minor / total * 100);
+    clue = Math.round(clue / total * 100);
+    major = Math.round(major / total * 100);
+    daily = 100 - minor - clue - major;
+    return { daily, minor, clue, major };
+  }
+
+  function worldArcStage() {
+    const progress = state.worldArc.progress;
+    if (progress < 25) return "暗中潜伏";
+    if (progress < 50) return "出现征兆";
+    if (progress < 72) return "局势升级";
+    if (progress < 92) return "重大事件临界";
+    return "事件爆发";
+  }
+
+  function renderStatus() {
+    state.soulStability = clamp(Math.round(55 + state.potential.controlAffinity * 0.35 + state.stats.control * 0.22 - state.fatigue * 0.3 - (100 - state.health) * 0.22), 0, 100);
+    const statLabels = { body: "体魄", mind: "思维", perception: "感知", will: "意志", social: "社交", control: "控制" };
+    $("#core-stat-list").innerHTML = Object.entries(state.stats).map(([key, value]) => {
+      const cap = statPotentialCap(key);
+      return `<div class="stat-row"><span>${statLabels[key]}</span><div class="meter"><i style="--value:${clamp(value / 1.1, 0, 100)}%"></i><em class="potential-cap" style="--cap:${clamp(cap / 1.1, 0, 100)}%"></em></div><b>${value} / ${cap}</b></div>`;
+    }).join("");
+
+    const potentialLabels = {
+      spiritCeiling: ["灵力上限", "容量与输出"],
+      growthRate: ["成长速度", "训练转化率"],
+      controlAffinity: ["控制天赋", "精度与稳定"],
+      battleInstinct: ["战斗直觉", "临场与反应"],
+      perceptionGift: ["灵觉感知", "发现异常"],
+      hybridCompatibility: ["混合适性", "跨体系兼容"],
+    };
+    $("#potential-grid").innerHTML = Object.entries(state.potential).map(([key, value]) => `<div class="potential-item"><span>${potentialLabels[key][0]}</span><strong>${rankFromValue(value)}</strong><small>${value} · ${potentialLabels[key][1]}</small></div>`).join("");
+
+    const probabilities = currentProbabilityMetrics();
+    const probabilityLabels = {
+      awakening: ["能力觉醒", "本月训练触发"],
+      breakthrough: ["成长突破", "成功训练后"],
+      encounter: ["危险遭遇", "当前地点"],
+      injury: ["受伤风险", "危险行动"],
+      involvement: ["世界卷入", "重大事件"],
+      rareEvent: ["稀有事件", "每月事件池"],
+    };
+    const monthOdds = monthlyEventDistribution();
+    const monthLabels = { daily: "月末日常", minor: "月末小事件", clue: "大事件线索", major: "重大事件" };
+    $("#probability-grid").innerHTML = Object.entries(probabilities).map(([key, value]) => `<div class="probability-item"><span>${probabilityLabels[key][0]}</span><strong>${value}%</strong><small>${probabilityLabels[key][1]}</small></div>`).join("")
+      + Object.entries(monthOdds).map(([key, value]) => `<div class="probability-item month-odds"><span>${monthLabels[key]}</span><strong>${value}%</strong><small>结束本月时抽取</small></div>`).join("");
+
+    const skillLabels = { life: "生活经验", training: "能力训练", combat: "实战", research: "研究", social: "社交" };
+    $("#proficiency-list").innerHTML = Object.entries(state.skills).map(([key, value]) => `<div class="stat-row"><span>${skillLabels[key]}</span><div class="meter"><i style="--value:${clamp(value / 8 * 100, 0, 100)}%"></i></div><b>Lv.${value}</b></div>`).join("");
+
+    const owned = state.abilities.map((id) => DATA.abilities.find((ability) => ability.id === id)).filter(Boolean);
+    $("#owned-ability-count").textContent = `${owned.length}项`;
+    $("#owned-ability-list").innerHTML = owned.length ? owned.map((ability) => {
+      const mastery = state.abilityMastery[ability.id] || 0;
+      return `<article class="owned-ability"><header><h3>${escapeHtml(ability.name)}</h3><b>${escapeHtml(ability.id)}</b></header><p>${escapeHtml(ability.mechanism || ability.effect || "能力正在形成")}</p><div class="ability-mastery"><div class="meter"><i style="--value:${mastery}%"></i></div><span>${mastery}%</span></div></article>`;
+    }).join("") : `<div class="empty-ability">你尚未明确掌握特殊能力。通过训练、调查与觉醒事件确认自己的力量。</div>`;
+
+    $("#growth-overview").innerHTML = `
+      <div class="growth-track"><span>觉醒进度</span><b>${state.awakeningProgress}%</b><small>${state.awakeningProgress >= 75 ? "接近明确觉醒" : "仍在积累触发条件"}</small></div>
+      <div class="growth-track"><span>突破积累</span><b>${state.breakthroughProgress}%</b><small>训练成功会持续推进</small></div>
+      <div class="growth-track"><span>灵魂稳定</span><b>${state.soulStability}%</b><small>${state.soulStability < 45 ? "混合与强行突破风险很高" : "当前力量结构可控"}</small></div>
+      <div class="growth-track"><span>世界暗线</span><b>${state.worldArc.progress}% · ${worldArcStage()}</b><small>${escapeHtml(state.worldArc.title)}；已掌握 ${state.worldArc.clues} 条线索</small></div>`;
+
+    const averageStats = Object.values(state.stats).reduce((sum, value) => sum + value, 0) / Object.keys(state.stats).length;
+    const overallValue = clamp(Math.round(averageStats * 0.55 + state.spirit * 0.25 + Math.max(...Object.values(state.skills)) * 3 + state.abilities.length * 1.5), 0, 100);
+    const rank = rankFromValue(overallValue);
+    $("#overall-rank").innerHTML = `<small>综合评价 ${overallValue}</small><strong>${rank}</strong><span>${rankDescription(rank)}</span>`;
   }
 
   function worldHeadline() {
@@ -391,12 +586,15 @@
 
   function renderActions() {
     $("#action-grid").innerHTML = actionDefinitions.map((action) => {
-      const disabled = (pendingEvent && action.id !== "month") || (action.cost > state.ap && action.id !== "month");
+      const disabled = Boolean(pendingEvent) || (action.cost > state.ap && action.id !== "month");
+      const probability = ["rest", "month"].includes(action.id) ? 100 : estimateActionChance(action.id);
+      const probabilityLabel = action.id === "month" ? "必有事件" : action.id === "rest" ? "确定" : "成功";
       return `
         <button class="action-card" data-action="${action.id}" data-mark="${action.mark}" ${disabled ? "disabled" : ""} type="button">
           <span class="action-cost">${action.cost ? `${action.cost} AP` : "结算"}</span>
           <strong>${action.name}</strong>
           <small>${action.desc}</small>
+          <span class="action-probability"><b>${probability}%</b>${probabilityLabel}</span>
         </button>`;
     }).join("");
   }
@@ -422,6 +620,14 @@
     return randomItem(candidates);
   }
 
+  function pickWorldEventForEra() {
+    const prefix = { substitute: "W-SUB", "soul-society": "W-SS", arrancar: "W-ARR", fullbring: "W-FUL", tybw: "W-TYBW" }[state.era];
+    let candidates = DATA.events.filter((event) => event.category === "world" && event.id.startsWith(prefix));
+    const fresh = candidates.filter((event) => !state.recentEventIds.includes(event.id));
+    if (fresh.length) candidates = fresh;
+    return randomItem(candidates.length ? candidates : DATA.events.filter((event) => event.category === "world"));
+  }
+
   function beginAction(actionId) {
     const action = actionDefinitions.find((item) => item.id === actionId);
     if (!action) return;
@@ -438,6 +644,7 @@
       const recovered = Math.min(state.fatigue, 24);
       state.fatigue = clamp(state.fatigue - 24, 0, 100);
       state.health = clamp(state.health + 8, 0, 100);
+      state.monthlyRecord.push({ category: "daily", actionId: "rest", eventId: "REST", name: "休息与恢复", choice: "主动休息", result: "success" });
       addHistory("休息与恢复", `疲劳降低 ${recovered}，身体状态有所恢复。`, "daily");
       saveGame(false);
       renderAll();
@@ -459,12 +666,15 @@
     }
     const choices = pendingEvent.choices.length ? pendingEvent.choices : ["继续"];
     container.innerHTML = `
-      <span class="event-id">${escapeHtml(pendingEvent.id)} · ${escapeHtml(pendingEvent.category.toUpperCase())}</span>
+      <span class="event-id">${pendingEvent.mandatory ? "月末必定事件 · " : ""}${escapeHtml(pendingEvent.id)} · ${escapeHtml(pendingEvent.category.toUpperCase())}</span>
       <h2>${escapeHtml(pendingEvent.name)}</h2>
       <p><b>触发：</b>${escapeHtml(pendingEvent.trigger)}<br><b>可能影响：</b>${escapeHtml(pendingEvent.outcome)}</p>
       <div class="event-choices">
-        ${choices.map((choice, index) => `<button data-event-choice="${index}" type="button">${escapeHtml(choice)}</button>`).join("")}
-        <button data-cancel-event type="button">暂不行动</button>
+        ${choices.map((choice, index) => {
+          const chance = buildCheck(pendingEvent, choice).distribution.success;
+          return `<button data-event-choice="${index}" type="button">${escapeHtml(choice)}<small>预计成功 ${chance}%</small></button>`;
+        }).join("")}
+        ${pendingEvent.mandatory ? "" : `<button data-cancel-event type="button">暂不行动</button>`}
       </div>`;
     container.classList.remove("hidden");
   }
@@ -477,6 +687,25 @@
     if (value < 80) return 3;
     if (value < 95) return 5;
     return 7;
+  }
+
+  function checkDistribution(modifier, dc) {
+    const counts = { critical: 0, strong: 0, success: 0, cost: 0, failure: 0, disaster: 0 };
+    for (let roll = 1; roll <= 20; roll += 1) {
+      counts[classifyResult(roll + modifier, dc, roll).id] += 1;
+    }
+    const percent = (count) => Math.round(count / 20 * 100);
+    return {
+      critical: percent(counts.critical + counts.strong),
+      success: percent(counts.critical + counts.strong + counts.success),
+      cost: percent(counts.cost),
+      failure: percent(counts.failure + counts.disaster),
+    };
+  }
+
+  function estimateActionChance(category) {
+    const mock = { id: `EST-${category}`, category, name: "一般行动", trigger: "当前条件", outcome: "" };
+    return buildCheck(mock, "预计").distribution.success;
   }
 
   function buildCheck(event, choice, context = {}) {
@@ -518,6 +747,14 @@
       modifier += relationBonus;
       factors.push(`关系 ${relationBonus >= 0 ? "+" : ""}${relationBonus}`);
     }
+    if (/准备|观察|记录|求助|协作|正常|诚实|停止|撤退|等待/.test(choice)) {
+      modifier += 1;
+      factors.push("选择方式稳妥 +1");
+    }
+    if (/强行|硬撑|蒙|挑衅|纠缠|独自追击|冒险深入/.test(choice)) {
+      modifier -= 1;
+      factors.push("选择方式冒险 -1");
+    }
     const categoryDc = { daily: 10, growth: 14, exploration: 13, relationship: 12, choice: 15, accident: 17, series: 18, world: 20, social: 13 };
     let dc = categoryDc[event.category] || 13;
     dc += Math.floor(state.worldPressure / 30);
@@ -526,7 +763,8 @@
     const lockKey = `${state.year}-${state.month}-${event.id}-${choice}-${context.npc || ""}`;
     const locked = state.eventLocks[lockKey];
     const roll = locked?.roll || 1 + Math.floor(Math.random() * 20);
-    return { modifier, dc: clamp(dc, 5, 30), factors, roll, lockKey, context };
+    dc = clamp(dc, 5, 30);
+    return { modifier, dc, factors, roll, lockKey, context, distribution: checkDistribution(modifier, dc) };
   }
 
   function classifyResult(total, dc, roll) {
@@ -549,6 +787,10 @@
     $("#modifier-value").textContent = `${check.modifier >= 0 ? "+" : ""}${check.modifier}`;
     $("#dc-value").textContent = check.dc;
     $("#check-factors").innerHTML = check.factors.map((factor) => `<span>${escapeHtml(factor)}</span>`).join("");
+    $("#check-probabilities").innerHTML = `
+      <div><span>强成功</span><strong>${check.distribution.critical}%</strong></div>
+      <div><span>基本成功</span><strong>${check.distribution.success}%</strong></div>
+      <div><span>失败风险</span><strong>${check.distribution.failure}%</strong></div>`;
     $("#resolved-outcome").classList.add("hidden");
     $("#resolved-outcome").innerHTML = "";
     $("#reveal-result").classList.remove("hidden");
@@ -579,6 +821,8 @@
 
   function applyResolution(event, choice, result, check) {
     const successScale = { critical: 4, strong: 3, success: 2, cost: 1, failure: -1, disaster: -3 }[result.id];
+    const actionContext = pendingEvent ? { ...pendingEvent } : null;
+    const isSettlement = actionContext?.actionId === "settlement";
     if (pendingEvent) {
       state.ap = clamp(state.ap - pendingEvent.actionCost, 0, state.maxAp);
       state.fatigue = clamp(state.fatigue + (pendingEvent.actionCost * 7), 0, 100);
@@ -591,6 +835,10 @@
     if (event.category === "growth" && successScale > 0) {
       state.spirit = clamp(state.spirit + successScale, 0, 120);
       state.stats.control = clamp(state.stats.control + successScale, 0, 110);
+      state.awakeningProgress = clamp(state.awakeningProgress + Math.max(1, Math.round(successScale * (0.8 + state.potential.spiritCeiling / 100))), 0, 100);
+      state.breakthroughProgress = clamp(state.breakthroughProgress + Math.max(2, Math.round(successScale * (1 + state.potential.growthRate / 80))), 0, 100);
+      const trainedAbility = randomItem(state.abilities);
+      if (trainedAbility) state.abilityMastery[trainedAbility] = clamp((state.abilityMastery[trainedAbility] || 0) + successScale * 2, 0, 100);
       maybeUnlockAbility();
     }
     if (event.category === "exploration" && successScale > 0) discoverSomething();
@@ -600,7 +848,24 @@
     if (["choice", "accident", "world"].includes(event.category)) {
       state.reputation = clamp(state.reputation + Math.max(0, successScale), 0, 100);
     }
+    if (!isSettlement && ["series", "world"].includes(event.category)) {
+      state.worldArc.progress = clamp(state.worldArc.progress + Math.max(1, successScale + (event.category === "world" ? 3 : 1)), 0, 100);
+      if (successScale > 0) state.worldArc.clues += 1;
+      state.worldArc.deviation = clamp(state.worldArc.deviation + successScale, -100, 100);
+    } else if (!isSettlement && ["choice", "accident"].includes(event.category)) {
+      state.worldArc.deviation = clamp(state.worldArc.deviation + Math.sign(successScale), -100, 100);
+    }
     if (check.context.npc) updateRelation(check.context.npc, result.id, choice);
+    if (!isSettlement) {
+      state.monthlyRecord.push({
+        category: event.category === "social" ? "relationship" : event.category,
+        actionId: actionContext?.actionId || (check.context.npc ? "social" : "event"),
+        eventId: event.id,
+        name: event.name,
+        choice,
+        result: result.id,
+      });
+    }
     state.recentEventIds.unshift(event.id);
     state.recentEventIds = state.recentEventIds.slice(0, 24);
     addHistory(event.name, `选择「${choice}」— ${result.label}。${event.outcome || result.tone}`, event.category);
@@ -608,19 +873,27 @@
       state.causalQueue.unshift({ title: `处理：${event.name}`, detail: "未解决的代价会在未来月份继续产生影响", months: result.id === "disaster" ? 3 : 1 });
     }
     pendingEvent = null;
+    if (isSettlement) {
+      delete state.pendingMandatoryEvent;
+      completeMonthAdvance(event, result);
+      renderActiveEvent();
+      return;
+    }
     saveGame(false);
     renderAll();
     renderActiveEvent();
   }
 
   function maybeUnlockAbility() {
-    if (Math.random() > 0.34) return;
+    if (Math.random() * 100 > currentProbabilityMetrics().awakening) return;
     const prefixes = { shinigami: "Z", hollow: "H", quincy: "Q", fullbringer: "F", human: "F", soul: "Z" };
     const prefix = prefixes[state.race];
     const options = DATA.abilities.filter((ability) => ability.id.startsWith(prefix) && !state.abilities.includes(ability.id));
     if (!options.length) return;
     const ability = randomItem(options.slice(0, Math.min(options.length, 24 + state.skills.training * 4)));
     state.abilities.push(ability.id);
+    state.abilityMastery[ability.id] = clamp(8 + Math.round(state.potential.controlAffinity / 10), 8, 24);
+    state.awakeningProgress = clamp(state.awakeningProgress - 28, 0, 100);
     addHistory("能力进展", `你掌握或理解了：${ability.name}（${ability.id}）`, "growth");
     showToast(`能力进展：${ability.name}`);
   }
@@ -657,7 +930,7 @@
       return { id: event.id, name: event.name, category, hint: event.trigger };
     });
     if (state.worldPressure > 55) {
-      const world = pickEvent("world");
+      const world = pickWorldEventForEra();
       state.opportunities.unshift({ id: world.id, name: world.name, category: "world", hint: "世界事件的消息正在接近你" });
     }
     state.opportunities = state.opportunities.slice(0, 4);
@@ -677,7 +950,61 @@
       showToast("请先处理或放弃当前事件。");
       return;
     }
-    const unused = state.ap;
+    const odds = monthlyEventDistribution();
+    const type = weightedPick([
+      { value: "daily", weight: odds.daily },
+      { value: "minor", weight: odds.minor },
+      { value: "clue", weight: odds.clue },
+      { value: "major", weight: odds.major },
+    ]);
+    const categoryCounts = state.monthlyRecord.reduce((counts, item) => {
+      counts[item.category] = (counts[item.category] || 0) + 1;
+      return counts;
+    }, {});
+    const dominant = Object.entries(categoryCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || "daily";
+    const cause = state.monthlyRecord[state.monthlyRecord.length - 1];
+    const category = type === "major"
+      ? "world"
+      : type === "clue"
+        ? (Math.random() < 0.68 ? "series" : "world")
+        : type === "minor"
+          ? (["growth", "relationship", "exploration", "choice", "accident"].includes(dominant) ? dominant : randomItem(["daily", "accident", "choice"]))
+          : (["daily", "growth", "relationship"].includes(dominant) ? dominant : "daily");
+    const baseEvent = category === "world" ? pickWorldEventForEra() : pickEvent(category);
+    const prefixes = { daily: "这个月留下的日常", minor: "月末的小小变故", clue: "大事件的蛛丝马迹", major: "正在发生的重大事件" };
+    state.settlementUnusedAp = state.ap;
+    pendingEvent = {
+      ...baseEvent,
+      name: `${prefixes[type]}：${baseEvent.name}`,
+      trigger: cause
+        ? `你本月曾选择「${cause.choice || cause.name}」，其后果与“${baseEvent.trigger}”产生联系。`
+        : `你本月没有留下强烈主动选择，世界仍按自身逻辑发生了“${baseEvent.trigger}”。`,
+      outcome: `${baseEvent.outcome}；这件事会写入世界历史并影响后续事件权重。`,
+      actionCost: 0,
+      actionId: "settlement",
+      settlementType: type,
+      mandatory: true,
+    };
+    state.pendingMandatoryEvent = pendingEvent;
+    saveGame(false);
+    renderActiveEvent();
+    renderActions();
+    $("#active-event").scrollIntoView({ behavior: "smooth", block: "center" });
+    showToast("月末必定事件已生成，结算后才能进入下个月。");
+  }
+
+  function completeMonthAdvance(settlementEvent, settlementResult) {
+    const unused = state.settlementUnusedAp ?? state.ap;
+    const type = settlementEvent.settlementType || "daily";
+    const arcGain = { daily: 1, minor: 3, clue: 7, major: 14 }[type];
+    state.worldArc.progress = clamp(state.worldArc.progress + arcGain + Math.round(state.worldPressure / 25), 0, 100);
+    if (type === "clue" || type === "major") state.worldArc.clues += type === "major" ? 2 : 1;
+    if (type === "major") {
+      state.worldArc.majorEvents += 1;
+      state.worldArc.progress = clamp(28 + Math.round(state.worldPressure / 5), 20, 62);
+    }
+    const resultDeviation = { critical: 4, strong: 3, success: 1, cost: 0, failure: -1, disaster: -3 }[settlementResult.id] || 0;
+    state.worldArc.deviation = clamp(state.worldArc.deviation + resultDeviation, -100, 100);
     state.month += 1;
     if (state.month > 12) {
       state.month = 1;
@@ -690,22 +1017,28 @@
     state.health = clamp(state.health + 10, 0, 100);
     const pressureDelta = Math.floor(Math.random() * 13) - 4 + (state.era === "tybw" ? 3 : 0);
     state.worldPressure = clamp(state.worldPressure + pressureDelta, 5, 100);
+    if (state.breakthroughProgress >= 100) {
+      const growthTargets = Object.entries(state.stats).sort((a, b) => a[1] - b[1]);
+      const [targetKey] = growthTargets[0];
+      const growthAmount = 2 + Math.round(state.potential.growthRate / 45);
+      state.stats[targetKey] = clamp(state.stats[targetKey] + growthAmount, 0, statPotentialCap(targetKey));
+      state.spirit = clamp(state.spirit + 2, 0, 120);
+      state.breakthroughProgress = 18;
+      addHistory("成长突破", `长期积累完成转化：${targetKey}提高 ${growthAmount}，灵力提高 2。`, "growth");
+    }
     state.causalQueue = state.causalQueue
       .map((item) => ({ ...item, months: item.months - 1 }))
       .filter((item) => item.months > 0);
     if (state.elapsedMonths % 3 === 0) {
-      const world = pickEvent("world");
-      const involvement = Math.floor(state.spirit / 20) + Math.floor(state.reputation / 12) + (state.worldPressure > 60 ? 3 : 0);
-      if (involvement >= 7) {
-        state.causalQueue.push({ title: world.name, detail: "你的能力、位置或关系使你难以完全置身事外", months: 2 });
-        addHistory("世界事件逼近", `${world.name}：你可能被邀请、指派、波及或针对。`, "world");
-      } else {
-        addHistory("远方传闻", `${world.name}：你目前只听到零散消息，世界没有强迫你成为主角。`, "world");
-      }
+      const world = pickWorldEventForEra();
+      state.causalQueue.push({ title: state.worldArc.title, detail: `${worldArcStage()}：${world.name}`, months: 2 });
+      addHistory("世界暗线推进", `${state.worldArc.title}已发展至${state.worldArc.progress}%。你目前掌握${state.worldArc.clues}条线索。`, "world");
     }
     updateNpcPlans();
+    state.monthlyRecord = [];
+    delete state.settlementUnusedAp;
     generateOpportunities();
-    addHistory("月末结算", `进入${stateDate()}。未使用 ${unused} AP；收入、恢复与世界行动已结算。`, "system");
+    addHistory("月末结算", `必定事件已处理，进入${stateDate()}。未使用 ${unused} AP；收入、恢复、NPC计划与世界暗线已结算。`, "system");
     saveGame(false);
     renderAll();
     showToast("新月份开始：10 AP 已恢复。");
@@ -779,6 +1112,7 @@
     state.ap -= node.cost;
     state.location = node.id;
     state.fatigue = clamp(state.fatigue + node.cost * 8, 0, 100);
+    state.monthlyRecord.push({ category: "exploration", actionId: "travel", eventId: `TRAVEL-${node.id}`, name: `前往${node.label}`, choice: "执行旅行", result: "success" });
     addHistory("跨区域旅行", `你抵达了${node.label}。`, "exploration");
     generateOpportunities();
     saveGame(false);
@@ -843,6 +1177,7 @@
     const relation = state.relations[selectedNpc];
     if (action === "打招呼") {
       relation.familiarity = clamp(relation.familiarity + 1, 0, 100);
+      state.monthlyRecord.push({ category: "relationship", actionId: "social", eventId: "SOC-GREET", name: `与${selectedNpc}打招呼`, choice: "简短问候", result: "success" });
       addHistory(`与${selectedNpc}打招呼`, "一次简短接触。对方没有因此立刻信任你。", "relationship");
       saveGame(false);
       renderAll();
@@ -921,6 +1256,7 @@
     $$("#main-nav button").forEach((button) => button.classList.toggle("active", button.dataset.view === view));
     $$(".view").forEach((section) => section.classList.toggle("active", section.id === `${view}-view`));
     if (view === "abilities") renderAbilities();
+    if (view === "status") renderStatus();
     if (view === "history") renderHistory();
   }
 
@@ -935,11 +1271,11 @@
     try {
       const saved = JSON.parse(localStorage.getItem(SAVE_KEY));
       if (!saved?.id) throw new Error("invalid");
-      state = saved;
+      state = ensureStateSchema(saved);
       state.eventLocks ||= {};
       state.opportunities ||= [];
       state.discoveredLocations ||= [state.realm, "human"];
-      pendingEvent = null;
+      pendingEvent = state.pendingMandatoryEvent || null;
       if (!state.opportunities.length) generateOpportunities();
       enterGame();
       showToast("已继续上一次人生。");
@@ -966,7 +1302,8 @@
       try {
         const imported = JSON.parse(reader.result);
         if (!imported?.id || !imported?.race || !imported?.history) throw new Error("invalid");
-        state = imported;
+        state = ensureStateSchema(imported);
+        pendingEvent = state.pendingMandatoryEvent || null;
         saveGame(false);
         enterGame();
         showToast("存档导入成功。");
