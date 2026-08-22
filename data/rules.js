@@ -118,7 +118,8 @@
     if (tier === 0) Object.keys(bonuses).forEach((key) => { bonuses[key] = 0; });
     const domainWeights = {};
     Object.keys(DOMAIN_LABELS).forEach((domain) => {
-      domainWeights[domain] = Math.max(...roles.map((role, index) => Math.round((ROLE_DOMAIN_WEIGHTS[role]?.[domain] || 0) * (index ? 0.86 : 1))));
+      const roleWeight = Math.max(...roles.map((role, index) => Math.round((ROLE_DOMAIN_WEIGHTS[role]?.[domain] || 0) * (index ? 0.86 : 1))));
+      domainWeights[domain] = clamp(roleWeight + idVariation(`${ability.id}-${domain}`) * 3, 0, 100);
     });
     const releaseBonus = primary === "release" && potency ? clamp(8 + Math.round(potency / 2), 8, 15) : 0;
     const cost = potency === 0 ? 0 : clamp(Math.round(2 + potency * 0.65 + (primary === "release" ? 5 : 0)), 2, 18);
