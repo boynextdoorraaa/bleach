@@ -2,6 +2,7 @@
   "use strict";
 
   const DATA = window.BLEACH_DATA;
+  const RULES = window.BLEACH_RULES;
   const SAVE_KEY = "bleach-life-simulator-v1";
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -123,7 +124,7 @@
 
   function ensureStateSchema(target) {
     const seed = target.id || `${target.name}-${target.race}-${target.year}`;
-    target.version = 2;
+    target.version = 3;
     const createdPotential = !target.potential;
     target.potential ||= {
       spiritCeiling: seededNumber(seed, "spirit"),
@@ -146,6 +147,19 @@
     target.awakeningProgress ??= clamp(Math.round((target.spirit + target.potential.spiritCeiling) / 4), 0, 100);
     target.breakthroughProgress ??= clamp((target.skills?.training || 0) * 8, 0, 100);
     target.soulStability ??= clamp(72 + Math.round(target.potential.controlAffinity / 5) - Math.round(target.fatigue / 4), 0, 100);
+    target.stats ||= { body: 40, mind: 40, perception: 40, will: 40, social: 40, control: 30 };
+    target.attributes ||= {
+      body: clamp(Math.round(target.stats.body), 1, 100),
+      mobility: clamp(Math.round(target.stats.body * 0.42 + target.stats.perception * 0.38 + target.potential.battleInstinct * 0.2), 1, 100),
+      power: clamp(Math.round(target.spirit * 0.52 + target.stats.body * 0.2 + target.stats.control * 0.28), 1, 100),
+      resistance: clamp(Math.round(target.stats.will * 0.5 + target.stats.control * 0.22 + target.spirit * 0.28), 1, 100),
+      capacity: clamp(Math.round(target.spirit * 0.75 + target.potential.spiritCeiling * 0.25), 1, 100),
+      control: clamp(Math.round(target.stats.control), 1, 100),
+      insight: clamp(Math.round(target.stats.perception * 0.58 + target.stats.mind * 0.42), 1, 100),
+      will: clamp(Math.round(target.stats.will), 1, 100),
+    };
+    target.spiritResource ??= target.attributes.capacity;
+    target.spiritResource = clamp(target.spiritResource, 0, 100);
     target.monthlyRecord ||= [];
     target.worldArc ||= {
       title: {
@@ -160,7 +174,6 @@
       deviation: 0,
       majorEvents: 0,
     };
-    target.stats ||= { body: 40, mind: 40, perception: 40, will: 40, social: 40, control: 30 };
     target.skills ||= { life: 1, training: 0, combat: 0, research: 0, social: 0 };
     return target;
   }
@@ -275,7 +288,7 @@
       };
     });
     return ensureStateSchema({
-      version: 2,
+      version: 3,
       id: uid("life"),
       name: options.name || "无名旅者",
       mode: options.mode,
@@ -410,8 +423,8 @@
   }
 
   function renderAll() {
-    renderHud();
     renderStatus();
+    renderHud();
     renderActions();
     renderOpportunities();
     renderTimeline();
@@ -435,7 +448,8 @@
     $("#ap-pips").innerHTML = Array.from({ length: state.maxAp }, (_, index) => `<i class="${index < state.ap ? "on" : ""}"></i>`).join("");
     $("#status-health").textContent = `${state.health} / 100`;
     $("#status-fatigue").textContent = `${state.fatigue} / 100`;
-    $("#status-spirit").textContent = `${state.spirit} · ${spiritLabel(state.spirit)}`;
+    const attributeSheet = currentAttributeSheet();
+    $("#status-spirit").textContent = `${state.spiritResource} / ${attributeSheet.effective.capacity}`;
     $("#status-reputation").textContent = `${state.reputation} · ${reputationLabel(state.reputation)}`;
     $("#status-money").textContent = state.realm === "human" ? `¥ ${state.money.toLocaleString()}` : `${state.money.toLocaleString()} 环`;
     $("#pressure-value").textContent = state.worldPressure;
@@ -449,6 +463,7 @@
     $("#quick-status-strip").innerHTML = [
       ["当前生命", `${state.health}%`, healthLabel(state.health)],
       ["灵魂稳定", `${state.soulStability}%`, state.soulStability >= 70 ? "稳定" : "需要注意"],
+      ["有效战力", `${attributeSheet.effective.power}`, RULES.attributeScaleLabel(attributeSheet.effective.power)],
       ["能力觉醒", `${live.awakening}%`, `进度 ${state.awakeningProgress}%`],
       ["危险遭遇", `${live.encounter}%`, pressureLabel(state.worldPressure)],
     ].map(([label, value, note]) => `<div class="quick-status-item"><span>${label}</span><strong>${value}</strong><small>${note}</small></div>`).join("");
@@ -470,23 +485,34 @@
   function statPotentialCap(key) {
     const mapping = {
       body: state.potential.battleInstinct,
-      mind: state.potential.growthRate,
-      perception: state.potential.perceptionGift,
-      will: state.potential.spiritCeiling,
-      social: Math.round((state.potential.perceptionGift + state.potential.growthRate) / 2),
+      mobility: Math.round((state.potential.battleInstinct + state.potential.perceptionGift) / 2),
+      power: Math.round((state.potential.spiritCeiling + state.potential.controlAffinity) / 2),
+      resistance: Math.round((state.potential.spiritCeiling + state.potential.growthRate) / 2),
+      capacity: state.potential.spiritCeiling,
       control: state.potential.controlAffinity,
+      insight: state.potential.perceptionGift,
+      will: Math.round((state.potential.spiritCeiling + state.potential.growthRate) / 2),
     };
-    return clamp(mapping[key] + 20, 45, 110);
+    return clamp(mapping[key] + 20, 45, 100);
+  }
+
+  function ownedAbilityRecords() {
+    return state.abilities.map((id) => DATA.abilities.find((ability) => ability.id === id)).filter(Boolean);
+  }
+
+  function currentAttributeSheet() {
+    return RULES.effectiveAttributes(state, ownedAbilityRecords());
   }
 
   function currentProbabilityMetrics() {
     const danger = realms[state.location]?.danger ?? 30;
     const training = state.skills.training || 0;
+    const attributes = currentAttributeSheet().effective;
     return {
       awakening: clamp(Math.round(state.awakeningProgress * 0.42 + state.potential.spiritCeiling * 0.3 + training * 2.5 - state.fatigue * 0.12), 1, 96),
       breakthrough: clamp(Math.round(state.breakthroughProgress * 0.4 + state.potential.growthRate * 0.3 + state.potential.controlAffinity * 0.18 - state.fatigue * 0.18), 1, 95),
       encounter: clamp(Math.round(danger * 0.5 + state.worldPressure * 0.27 + state.spirit * 0.17 + state.reputation * 0.08), 2, 97),
-      injury: clamp(Math.round(danger * 0.28 + state.worldPressure * 0.18 + state.fatigue * 0.32 + (100 - state.health) * 0.25 - state.stats.body * 0.18), 1, 92),
+      injury: clamp(Math.round(danger * 0.28 + state.worldPressure * 0.18 + state.fatigue * 0.32 + (100 - state.health) * 0.25 - attributes.body * 0.12 - attributes.resistance * 0.08), 1, 92),
       involvement: clamp(Math.round(state.spirit * 0.22 + state.reputation * 0.38 + state.worldPressure * 0.3 + state.knownNpcs.length * 0.8 - 18), 1, 98),
       rareEvent: clamp(Math.round(state.potential.perceptionGift * 0.15 + state.worldPressure * 0.09 + state.reputation * 0.08 + (state.tone === "dramatic" ? 9 : 2)), 1, 45),
     };
@@ -520,10 +546,20 @@
 
   function renderStatus() {
     state.soulStability = clamp(Math.round(55 + state.potential.controlAffinity * 0.35 + state.stats.control * 0.22 - state.fatigue * 0.3 - (100 - state.health) * 0.22), 0, 100);
-    const statLabels = { body: "体魄", mind: "思维", perception: "感知", will: "意志", social: "社交", control: "控制" };
-    $("#core-stat-list").innerHTML = Object.entries(state.stats).map(([key, value]) => {
+    const attributeSheet = currentAttributeSheet();
+    state.spiritResource = clamp(state.spiritResource, 0, attributeSheet.effective.capacity);
+    $("#core-stat-list").innerHTML = Object.entries(RULES.ATTRIBUTE_DEFS).map(([key, definition]) => {
+      const value = state.attributes[key];
+      const effective = attributeSheet.effective[key];
+      const bonus = attributeSheet.bonuses[key];
+      const condition = attributeSheet.condition[key];
       const cap = statPotentialCap(key);
-      return `<div class="stat-row"><span>${statLabels[key]}</span><div class="meter"><i style="--value:${clamp(value / 1.1, 0, 100)}%"></i><em class="potential-cap" style="--cap:${clamp(cap / 1.1, 0, 100)}%"></em></div><b>${value} / ${cap}</b></div>`;
+      const adjustment = bonus + condition;
+      return `<div class="stat-row attribute-row" title="${escapeHtml(definition.desc)}">
+        <span>${definition.label}<small>${escapeHtml(RULES.attributeScaleLabel(effective))}</small></span>
+        <div class="meter"><i style="--value:${effective}%"></i><em class="potential-cap" style="--cap:${cap}%"></em></div>
+        <b>${effective}<small>基础 ${value}${adjustment ? ` ${adjustment > 0 ? "+" : ""}${adjustment}` : ""} / 上限 ${cap}</small></b>
+      </div>`;
     }).join("");
 
     const potentialLabels = {
@@ -553,12 +589,24 @@
     const skillLabels = { life: "生活经验", training: "能力训练", combat: "实战", research: "研究", social: "社交" };
     $("#proficiency-list").innerHTML = Object.entries(state.skills).map(([key, value]) => `<div class="stat-row"><span>${skillLabels[key]}</span><div class="meter"><i style="--value:${clamp(value / 8 * 100, 0, 100)}%"></i></div><b>Lv.${value}</b></div>`).join("");
 
-    const owned = state.abilities.map((id) => DATA.abilities.find((ability) => ability.id === id)).filter(Boolean);
+    const owned = ownedAbilityRecords();
     $("#owned-ability-count").textContent = `${owned.length}项`;
-    $("#owned-ability-list").innerHTML = owned.length ? owned.map((ability) => {
-      const mastery = state.abilityMastery[ability.id] || 0;
-      return `<article class="owned-ability"><header><h3>${escapeHtml(ability.name)}</h3><b>${escapeHtml(ability.id)}</b></header><p>${escapeHtml(ability.mechanism || ability.effect || "能力正在形成")}</p><div class="ability-mastery"><div class="meter"><i style="--value:${mastery}%"></i></div><span>${mastery}%</span></div></article>`;
-    }).join("") : `<div class="empty-ability">你尚未明确掌握特殊能力。通过训练、调查与觉醒事件确认自己的力量。</div>`;
+    const grouped = owned.reduce((groups, ability) => {
+      const profile = RULES.classifyAbility(ability, state.abilityMastery[ability.id] || 0);
+      (groups[profile.primary] ||= []).push({ ability, profile });
+      return groups;
+    }, {});
+    $("#owned-ability-list").innerHTML = owned.length ? Object.entries(RULES.ROLE_DEFS)
+      .filter(([role]) => grouped[role]?.length)
+      .map(([role, roleDefinition]) => `<section class="ability-role-group" style="--role-color:${roleDefinition.color}">
+        <header class="ability-role-header"><span>${roleDefinition.mark}</span><div><h3>${roleDefinition.label}</h3><small>${roleDefinition.desc} · ${grouped[role].length}项</small></div></header>
+        <div class="ability-role-items">${grouped[role].map(({ ability, profile }) => {
+          const mastery = state.abilityMastery[ability.id] || 0;
+          const bonuses = Object.entries(profile.bonuses).filter(([, value]) => value).map(([key, value]) => `${RULES.ATTRIBUTE_DEFS[key].short} +${value}`).join(" · ") || "无直接数值加成";
+          const domains = Object.entries(profile.domainWeights).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([key, value]) => `${RULES.DOMAIN_LABELS[key]} ${value}`).join(" · ");
+          return `<article class="owned-ability"><header><h3>${escapeHtml(ability.name)}</h3><b>${escapeHtml(ability.id)}</b></header><p>${escapeHtml(ability.mechanism || ability.effect || "能力正在形成")}</p><div class="ability-impact"><span>${escapeHtml(bonuses)}</span><small>适用权重：${escapeHtml(domains)}</small></div><div class="ability-mastery"><div class="meter"><i style="--value:${mastery}%"></i></div><span>${mastery}%</span></div></article>`;
+        }).join("")}</div>
+      </section>`).join("") : `<div class="empty-ability">你尚未明确掌握特殊能力。通过训练、调查与觉醒事件确认自己的力量。</div>`;
 
     $("#growth-overview").innerHTML = `
       <div class="growth-track"><span>觉醒进度</span><b>${state.awakeningProgress}%</b><small>${state.awakeningProgress >= 75 ? "接近明确觉醒" : "仍在积累触发条件"}</small></div>
@@ -566,7 +614,7 @@
       <div class="growth-track"><span>灵魂稳定</span><b>${state.soulStability}%</b><small>${state.soulStability < 45 ? "混合与强行突破风险很高" : "当前力量结构可控"}</small></div>
       <div class="growth-track"><span>世界暗线</span><b>${state.worldArc.progress}% · ${worldArcStage()}</b><small>${escapeHtml(state.worldArc.title)}；已掌握 ${state.worldArc.clues} 条线索</small></div>`;
 
-    const averageStats = Object.values(state.stats).reduce((sum, value) => sum + value, 0) / Object.keys(state.stats).length;
+    const averageStats = Object.values(attributeSheet.effective).reduce((sum, value) => sum + value, 0) / Object.keys(attributeSheet.effective).length;
     const overallValue = clamp(Math.round(averageStats * 0.55 + state.spirit * 0.25 + Math.max(...Object.values(state.skills)) * 3 + state.abilities.length * 1.5), 0, 100);
     const rank = rankFromValue(overallValue);
     $("#overall-rank").innerHTML = `<small>综合评价 ${overallValue}</small><strong>${rank}</strong><span>${rankDescription(rank)}</span>`;
@@ -644,6 +692,7 @@
       const recovered = Math.min(state.fatigue, 24);
       state.fatigue = clamp(state.fatigue - 24, 0, 100);
       state.health = clamp(state.health + 8, 0, 100);
+      state.spiritResource = clamp(state.spiritResource + 18, 0, currentAttributeSheet().effective.capacity);
       state.monthlyRecord.push({ category: "daily", actionId: "rest", eventId: "REST", name: "休息与恢复", choice: "主动休息", result: "success" });
       addHistory("休息与恢复", `疲劳降低 ${recovered}，身体状态有所恢复。`, "daily");
       saveGame(false);
@@ -671,30 +720,60 @@
       <p><b>触发：</b>${escapeHtml(pendingEvent.trigger)}<br><b>可能影响：</b>${escapeHtml(pendingEvent.outcome)}</p>
       <div class="event-choices">
         ${choices.map((choice, index) => {
-          const chance = buildCheck(pendingEvent, choice).distribution.success;
-          return `<button data-event-choice="${index}" type="button">${escapeHtml(choice)}<small>预计成功 ${chance}%</small></button>`;
+          const options = abilityOptionsForEvent(pendingEvent, choice);
+          const recommended = options.find((item) => item.profile.cost <= state.spiritResource && item.weight >= 58);
+          const abilityId = recommended?.ability.id || "";
+          const check = buildCheck(pendingEvent, choice, { abilityId });
+          return `<div class="event-choice-row">
+            <label><span>能力方案</span><select data-event-ability="${index}">
+              <option value="">不主动使用能力</option>
+              ${options.slice(0, 8).map((item) => `<option value="${escapeHtml(item.ability.id)}" ${item.ability.id === abilityId ? "selected" : ""} ${item.profile.cost > state.spiritResource ? "disabled" : ""}>${escapeHtml(item.ability.name)} · 权重${item.weight} · +${item.checkBonus} · 灵源-${item.profile.cost}</option>`).join("")}
+            </select></label>
+            <button data-event-choice="${index}" type="button"><span>${escapeHtml(choice)}</span><small>${escapeHtml(check.typeLabel)} · 预计成功 ${check.distribution.success}%${check.rollMode !== "normal" ? ` · ${check.rollMode === "advantage" ? "优势" : "劣势"}` : ""}</small></button>
+          </div>`;
         }).join("")}
         ${pendingEvent.mandatory ? "" : `<button data-cancel-event type="button">暂不行动</button>`}
       </div>`;
     container.classList.remove("hidden");
   }
 
-  function statModifier(value) {
-    if (value < 20) return -4;
-    if (value < 35) return -2;
-    if (value < 50) return 0;
-    if (value < 65) return 1;
-    if (value < 80) return 3;
-    if (value < 95) return 5;
-    return 7;
+  function abilityOptionsForEvent(event, choice) {
+    return ownedAbilityRecords()
+      .map((ability) => RULES.scoreAbilityForEvent(ability, state.abilityMastery[ability.id] || 0, event, choice))
+      .filter((item) => item.weight >= 18 && item.profile.potency > 0)
+      .sort((a, b) => (b.weight + b.checkBonus * 3) - (a.weight + a.checkBonus * 3));
   }
 
-  function checkDistribution(modifier, dc) {
+  function rollWeights(mode) {
+    return Array.from({ length: 100 }, (_, index) => {
+      const roll = index + 1;
+      if (mode === "advantage") return { roll, weight: 2 * roll - 1 };
+      if (mode === "disadvantage") return { roll, weight: 201 - 2 * roll };
+      return { roll, weight: 1 };
+    });
+  }
+
+  function rollD100(mode) {
+    const first = 1 + Math.floor(Math.random() * 100);
+    if (mode === "normal") return { roll: first, rolls: [first] };
+    const second = 1 + Math.floor(Math.random() * 100);
+    return { roll: mode === "advantage" ? Math.max(first, second) : Math.min(first, second), rolls: [first, second] };
+  }
+
+  function checkDistribution(spec) {
     const counts = { critical: 0, strong: 0, success: 0, cost: 0, failure: 0, disaster: 0 };
-    for (let roll = 1; roll <= 20; roll += 1) {
-      counts[classifyResult(roll + modifier, dc, roll).id] += 1;
-    }
-    const percent = (count) => Math.round(count / 20 * 100);
+    let totalWeight = 0;
+    const playerWeights = rollWeights(spec.rollMode);
+    const targetWeights = spec.type === "opposed" ? rollWeights("normal") : [{ roll: spec.dc, weight: 1 }];
+    playerWeights.forEach((player) => {
+      targetWeights.forEach((target) => {
+        const targetTotal = spec.type === "opposed" ? target.roll + spec.opponentScore : spec.dc;
+        const weight = player.weight * target.weight;
+        counts[classifyResult(player.roll + spec.playerScore, targetTotal, player.roll).id] += weight;
+        totalWeight += weight;
+      });
+    });
+    const percent = (count) => Math.round(count / totalWeight * 100);
     return {
       critical: percent(counts.critical + counts.strong),
       success: percent(counts.critical + counts.strong + counts.success),
@@ -709,73 +788,146 @@
   }
 
   function buildCheck(event, choice, context = {}) {
-    const categoryStats = {
-      daily: ["mind", "social"],
-      growth: ["will", "control"],
-      exploration: ["perception", "mind"],
-      relationship: ["social", "perception"],
-      choice: ["will", "mind"],
-      accident: ["body", "perception"],
-      series: ["will", "control"],
-      world: ["will", "body"],
-      social: ["social", "perception"],
-    };
-    const keys = categoryStats[event.category] || categoryStats.daily;
-    let modifier = statModifier(state.stats[keys[0]]) + statModifier(state.stats[keys[1]]);
-    const factors = [
-      `${keys[0]} ${modifier >= 0 ? "+" : ""}${statModifier(state.stats[keys[0]])}`,
-      `${keys[1]} ${statModifier(state.stats[keys[1]]) >= 0 ? "+" : ""}${statModifier(state.stats[keys[1]])}`,
-    ];
-    const skillKey = event.category === "growth" ? "training" : event.category === "accident" ? "combat" : event.category === "social" || event.category === "relationship" ? "social" : "life";
-    const skillBonus = Math.min(5, state.skills[skillKey] || 0);
-    modifier += skillBonus;
-    factors.push(`熟练 +${skillBonus}`);
-    if (state.fatigue >= 65) {
-      modifier -= 3;
-      factors.push("严重疲劳 -3");
-    } else if (state.fatigue >= 40) {
-      modifier -= 1;
-      factors.push("疲劳 -1");
+    const text = `${event.name || ""} ${event.trigger || ""} ${event.outcome || ""} ${choice}`;
+    const attributeSheet = currentAttributeSheet();
+    const attributes = attributeSheet.effective;
+    const selectedAbility = context.abilityId ? DATA.abilities.find((ability) => ability.id === context.abilityId) : null;
+    const abilityUse = selectedAbility ? RULES.scoreAbilityForEvent(selectedAbility, state.abilityMastery[selectedAbility.id] || 0, event, choice) : null;
+    const abilityUsable = Boolean(abilityUse && abilityUse.profile.cost <= state.spiritResource);
+    const isSave = /幻术|精神侵蚀|虚化反噬|反噬|催眠|恐惧|精神瓦解|人格侵蚀|心灵/.test(text);
+    const isCombat = !isSave && (["accident", "world", "series"].includes(event.category) || /战斗|攻击|敌人|斩击|交战|袭击|突袭|追击|防守|狩猎|虚群|冲突/.test(text));
+    const type = isSave ? "save" : isCombat ? "opposed" : "standard";
+    const factors = [];
+    const attributeNames = RULES.ATTRIBUTE_DEFS;
+    let primaryKey;
+    let secondaryKey;
+    let opponentKey = "mobility";
+    if (type === "save") {
+      primaryKey = "resistance";
+      secondaryKey = "will";
+    } else if (type === "opposed") {
+      if (/闪避|躲|撤退|逃|脱离|追击/.test(choice) || abilityUse?.profile.primary === "mobility") {
+        primaryKey = "mobility";
+        opponentKey = "power";
+      } else if (/防御|格挡|承受|保护|抵挡/.test(choice) || abilityUse?.profile.primary === "defense") {
+        primaryKey = /灵压|精神|幻|灵子/.test(text) ? "resistance" : "body";
+        opponentKey = "power";
+      } else if (abilityUse?.profile.primary === "control") {
+        primaryKey = "control";
+        opponentKey = "resistance";
+      } else {
+        primaryKey = "power";
+        opponentKey = "mobility";
+      }
+    } else {
+      const categoryStats = {
+        daily: ["insight", "will"], growth: ["control", "capacity"], exploration: ["insight", "mobility"],
+        relationship: ["insight", "will"], social: ["insight", "will"], choice: ["will", "insight"],
+        accident: ["mobility", "body"], series: ["insight", "will"], world: ["will", "resistance"],
+      };
+      [primaryKey, secondaryKey] = categoryStats[event.category] || categoryStats.daily;
     }
-    if (state.health < 70) {
-      modifier -= 2;
-      factors.push("伤势 -2");
+
+    let playerScore = attributes[primaryKey];
+    factors.push(`${attributeNames[primaryKey].label} ${attributes[primaryKey]}`);
+    if (secondaryKey) {
+      const secondaryValue = type === "save" ? attributes[secondaryKey] : Math.round(attributes[secondaryKey] * 0.35);
+      playerScore += secondaryValue;
+      factors.push(`${attributeNames[secondaryKey].label} ${type === "save" ? "+" : "35% = +"}${secondaryValue}`);
+    }
+    const skillKey = event.category === "growth" ? "training" : type === "opposed" ? "combat" : event.category === "social" || event.category === "relationship" ? "social" : event.category === "exploration" ? "research" : "life";
+    const skillBonus = Math.min(16, (state.skills[skillKey] || 0) * 2);
+    playerScore += skillBonus;
+    factors.push(`${skillKey} 熟练 +${skillBonus}`);
+    if (abilityUsable) {
+      playerScore += abilityUse.checkBonus;
+      factors.push(`${selectedAbility.name}：适用权重 ${abilityUse.weight} / +${abilityUse.checkBonus} / 灵源 -${abilityUse.profile.cost}`);
+    } else if (selectedAbility) {
+      factors.push(`${selectedAbility.name}：灵源不足，本次无法发动`);
     }
     if (context.npc) {
       const relation = state.relations[context.npc] || { trust: 0, respect: 0, tension: 0 };
-      const relationBonus = Math.floor((relation.trust + relation.respect - relation.tension) / 30);
-      modifier += relationBonus;
-      factors.push(`关系 ${relationBonus >= 0 ? "+" : ""}${relationBonus}`);
+      const relationBonus = clamp(Math.floor((relation.trust + relation.respect - relation.tension) / 15), -12, 12);
+      playerScore += relationBonus;
+      factors.push(`关系修正 ${relationBonus >= 0 ? "+" : ""}${relationBonus}`);
     }
     if (/准备|观察|记录|求助|协作|正常|诚实|停止|撤退|等待/.test(choice)) {
-      modifier += 1;
-      factors.push("选择方式稳妥 +1");
+      playerScore += 4;
+      factors.push("稳妥方案 +4");
     }
     if (/强行|硬撑|蒙|挑衅|纠缠|独自追击|冒险深入/.test(choice)) {
-      modifier -= 1;
-      factors.push("选择方式冒险 -1");
+      playerScore -= 4;
+      factors.push("冒险方案 -4");
     }
-    const categoryDc = { daily: 10, growth: 14, exploration: 13, relationship: 12, choice: 15, accident: 17, series: 18, world: 20, social: 13 };
-    let dc = categoryDc[event.category] || 13;
-    dc += Math.floor(state.worldPressure / 30);
-    if (/卍解|完圣体|灵王|队长|死亡|战争/.test(`${event.name}${event.trigger}`)) dc += 4;
-    if (/基础|普通|日常|小事/.test(`${event.name}${event.trigger}`)) dc -= 2;
-    const lockKey = `${state.year}-${state.month}-${event.id}-${choice}-${context.npc || ""}`;
+
+    const advantageReasons = [];
+    const disadvantageReasons = [];
+    if (/偷袭|伏击|潜行|背后/.test(choice)) advantageReasons.push("偷袭位置");
+    if (/控制|束缚|冻结|锁定|麻痹/.test(choice)) advantageReasons.push("敌人被控制");
+    if (abilityUse && /克制|无效|免疫|适应|反射|穿透|锁定/.test(`${selectedAbility.mechanism} ${selectedAbility.effect}`)) advantageReasons.push("能力克制");
+    if (state.spiritResource < Math.max(12, attributes.capacity * 0.25)) disadvantageReasons.push("灵源不足");
+    if (abilityUse && state.health < 55 && /媒介|物品|道具|武器|刀|弓/.test(`${selectedAbility.mechanism} ${selectedAbility.note}`)) disadvantageReasons.push("媒介或身体受损");
+    if (abilityUse && (state.abilityMastery[selectedAbility.id] || 0) < 60 && /反噬|冲突|致命|死亡率|过载|吞噬/.test(`${selectedAbility.note} ${selectedAbility.mechanism}`)) disadvantageReasons.push("力量冲突反噬");
+    let rollMode = advantageReasons.length ? "advantage" : disadvantageReasons.length ? "disadvantage" : "normal";
+    if (advantageReasons.length && disadvantageReasons.length) rollMode = "normal";
+    if (advantageReasons.length) factors.push(`优势：${advantageReasons.join("、")}${disadvantageReasons.length ? "；与劣势抵消" : "（2d100取高）"}`);
+    if (disadvantageReasons.length) factors.push(`劣势：${disadvantageReasons.join("、")}${advantageReasons.length ? "；与优势抵消" : "（2d100取低）"}`);
+
+    const threatBase = clamp(Math.round(24 + state.worldPressure * 0.5 + ({ daily: -6, growth: 0, exploration: 3, relationship: -4, social: -4, choice: 7, accident: 12, series: 18, world: 24 }[event.category] || 0) + (/队长|卍解|完圣体|灵王|战争|瓦史托德/.test(text) ? 12 : 0)), 12, 98);
+    const enemy = {
+      body: clamp(threatBase + seededNumber(event.id, "enemy-body", -8, 8), 1, 100),
+      mobility: clamp(threatBase + seededNumber(event.id, "enemy-mobility", -8, 8), 1, 100),
+      power: clamp(threatBase + seededNumber(event.id, "enemy-power", -6, 10), 1, 100),
+      resistance: clamp(threatBase + seededNumber(event.id, "enemy-resistance", -8, 8), 1, 100),
+    };
+    const opponentScore = enemy[opponentKey];
+    const baseDc = { daily: 74, growth: 90, exploration: 88, relationship: 84, social: 86, choice: 100, accident: 110, series: 123, world: 134 }[event.category] || 90;
+    let dc = type === "save" ? 102 + Math.round(state.worldPressure * 0.45) : baseDc + Math.round(state.worldPressure * 0.22);
+    if (/队长|卍解|完圣体|灵王|死亡|战争|瓦史托德/.test(text)) dc += 12;
+    if (/基础|普通|日常|小事/.test(text)) dc -= 8;
+    dc = clamp(dc, 55, 225);
+    const lockKey = `${state.year}-${state.month}-${event.id}-${choice}-${context.npc || ""}-${context.abilityId || "none"}`;
     const locked = state.eventLocks[lockKey];
-    const roll = locked?.roll || 1 + Math.floor(Math.random() * 20);
-    dc = clamp(dc, 5, 30);
-    return { modifier, dc, factors, roll, lockKey, context, distribution: checkDistribution(modifier, dc) };
+    const rolled = locked ? { roll: locked.roll, rolls: locked.rolls || [locked.roll] } : rollD100(rollMode);
+    const opponentRoll = locked?.opponentRoll || (type === "opposed" ? 1 + Math.floor(Math.random() * 100) : null);
+    const releaseDamage = abilityUsable ? abilityUse.profile.releaseBonus : 0;
+    const damage = type === "opposed" ? {
+      dealt: Math.max(0, Math.floor(attributes.power / 4) + releaseDamage - Math.floor(enemy.body / 4)),
+      received: Math.max(0, Math.floor(enemy.power / 4) - Math.floor(attributes.body / 4)),
+      releaseBonus: releaseDamage,
+    } : null;
+    const spec = { type, playerScore, opponentScore, dc, rollMode };
+    return {
+      type,
+      typeLabel: type === "opposed" ? "对抗检定" : type === "save" ? "豁免检定" : "事件检定",
+      playerScore,
+      modifier: playerScore,
+      opponentScore,
+      opponentKey,
+      enemy,
+      dc,
+      factors,
+      roll: rolled.roll,
+      rolls: rolled.rolls,
+      opponentRoll,
+      rollMode,
+      lockKey,
+      context: { ...context, abilityId: abilityUsable ? context.abilityId : null },
+      abilityUse: abilityUsable ? abilityUse : null,
+      damage,
+      distribution: checkDistribution(spec),
+    };
   }
 
   function classifyResult(total, dc, roll) {
     const margin = total - dc;
-    if (roll === 20 && margin >= 0) return { id: "critical", label: "关键成功", tone: "命运给了你一个额外窗口。" };
+    if (roll === 100 && margin >= 0) return { id: "critical", label: "关键成功", tone: "命运给了你一个额外窗口。" };
     if (roll === 1 && margin < 0) return { id: "disaster", label: "重大失败", tone: "问题没有停止在这一步，新的后果正在形成。" };
-    if (margin >= 10) return { id: "critical", label: "卓越成功", tone: "你不只达成目标，还获得了额外收益。" };
-    if (margin >= 5) return { id: "strong", label: "强成功", tone: "事情比预期完成得更好。" };
+    if (margin >= 35) return { id: "critical", label: "卓越成功", tone: "你不只达成目标，还获得了额外收益。" };
+    if (margin >= 15) return { id: "strong", label: "强成功", tone: "事情比预期完成得更好。" };
     if (margin >= 0) return { id: "success", label: "成功", tone: "你完成了主要目标。" };
-    if (margin >= -4) return { id: "cost", label: "带代价的结果", tone: "你得到了一部分，但必须承担代价。" };
-    if (margin >= -9) return { id: "failure", label: "失败", tone: "目标没有完成，局势留下了新的问题。" };
+    if (margin >= -10) return { id: "cost", label: "带代价的结果", tone: "你得到了一部分，但必须承担代价。" };
+    if (margin >= -30) return { id: "failure", label: "失败", tone: "目标没有完成，局势留下了新的问题。" };
     return { id: "disaster", label: "严重失败", tone: "后果扩大，你必须在以后处理它。" };
   }
 
@@ -784,8 +936,11 @@
     pendingResolution = { event, choice, check, revealed: false };
     $("#resolution-title").textContent = event.name;
     $("#roll-value").textContent = "?";
-    $("#modifier-value").textContent = `${check.modifier >= 0 ? "+" : ""}${check.modifier}`;
-    $("#dc-value").textContent = check.dc;
+    $("#roll-type-label").textContent = check.rollMode === "advantage" ? "2D100 取高" : check.rollMode === "disadvantage" ? "2D100 取低" : "D100";
+    $("#modifier-label").textContent = check.type === "save" ? "魂抗 + 意志等" : "属性 + 能力";
+    $("#modifier-value").textContent = `+${check.playerScore}`;
+    $("#target-label").textContent = check.type === "opposed" ? `对手 ${RULES.ATTRIBUTE_DEFS[check.opponentKey].label}` : "动态 DC";
+    $("#dc-value").textContent = check.type === "opposed" ? `? + ${check.opponentScore}` : check.dc;
     $("#check-factors").innerHTML = check.factors.map((factor) => `<span>${escapeHtml(factor)}</span>`).join("");
     $("#check-probabilities").innerHTML = `
       <div><span>强成功</span><strong>${check.distribution.critical}%</strong></div>
@@ -804,15 +959,24 @@
     if (!pendingResolution || pendingResolution.revealed) return;
     pendingResolution.revealed = true;
     const { event, choice, check } = pendingResolution;
-    const total = check.roll + check.modifier;
-    const result = classifyResult(total, check.dc, check.roll);
-    state.eventLocks[check.lockKey] = { roll: check.roll, result: result.id };
+    const total = check.roll + check.playerScore;
+    const targetTotal = check.type === "opposed" ? check.opponentRoll + check.opponentScore : check.dc;
+    const result = classifyResult(total, targetTotal, check.roll);
+    state.eventLocks[check.lockKey] = { roll: check.roll, rolls: check.rolls, opponentRoll: check.opponentRoll, result: result.id };
     $("#reveal-result").disabled = true;
     setTimeout(() => {
       $("#result-wheel").classList.remove("spinning");
       $("#wheel-core").textContent = check.roll;
-      $("#roll-value").textContent = check.roll;
-      $("#resolved-outcome").innerHTML = `<strong>${escapeHtml(result.label)}</strong><span>${escapeHtml(result.tone)} ${escapeHtml(event.outcome || "")}</span>`;
+      $("#roll-value").textContent = check.rolls.length > 1 ? `${check.rolls.join("/")} → ${check.roll}` : check.roll;
+      if (check.type === "opposed") $("#dc-value").textContent = `${check.opponentRoll} + ${check.opponentScore} = ${targetTotal}`;
+      const damageText = check.damage
+        ? result.id === "cost"
+          ? `带代价命中，造成 ${check.damage.dealt} 点伤害并承受 ${Math.ceil(check.damage.received / 2)} 点擦伤。`
+          : result.id === "critical" || result.id === "strong" || result.id === "success"
+          ? `命中伤害 ${check.damage.dealt}${check.damage.releaseBonus ? `（解放额外 +${check.damage.releaseBonus}）` : ""}。`
+          : `对抗失利，预计承受 ${check.damage.received} 点伤害。`
+        : "";
+      $("#resolved-outcome").innerHTML = `<strong>${escapeHtml(result.label)}</strong><span>${check.typeLabel}：${total} vs ${targetTotal}。${escapeHtml(damageText)} ${escapeHtml(result.tone)} ${escapeHtml(event.outcome || "")}</span>`;
       $("#resolved-outcome").classList.remove("hidden");
       $("#reveal-result").classList.add("hidden");
       applyResolution(event, choice, result, check);
@@ -832,9 +996,17 @@
       state.ap = clamp(state.ap - 1, 0, state.maxAp);
       state.fatigue = clamp(state.fatigue + 4, 0, 100);
     }
+    if (check.abilityUse) {
+      state.spiritResource = clamp(state.spiritResource - check.abilityUse.profile.cost, 0, currentAttributeSheet().effective.capacity);
+      const usedId = check.abilityUse.ability.id;
+      state.abilityMastery[usedId] = clamp((state.abilityMastery[usedId] || 0) + (successScale > 0 ? 1 : 0), 0, 100);
+    }
     if (event.category === "growth" && successScale > 0) {
       state.spirit = clamp(state.spirit + successScale, 0, 120);
       state.stats.control = clamp(state.stats.control + successScale, 0, 110);
+      state.attributes.control = clamp(state.attributes.control + successScale, 1, statPotentialCap("control"));
+      state.attributes.capacity = clamp(state.attributes.capacity + Math.max(1, Math.floor(successScale / 2)), 1, statPotentialCap("capacity"));
+      state.spiritResource = clamp(state.spiritResource + 2 + successScale, 0, currentAttributeSheet().effective.capacity);
       state.awakeningProgress = clamp(state.awakeningProgress + Math.max(1, Math.round(successScale * (0.8 + state.potential.spiritCeiling / 100))), 0, 100);
       state.breakthroughProgress = clamp(state.breakthroughProgress + Math.max(2, Math.round(successScale * (1 + state.potential.growthRate / 80))), 0, 100);
       const trainedAbility = randomItem(state.abilities);
@@ -842,8 +1014,11 @@
       maybeUnlockAbility();
     }
     if (event.category === "exploration" && successScale > 0) discoverSomething();
-    if (["accident", "world"].includes(event.category) && successScale < 0) {
-      state.health = clamp(state.health + successScale * 4, 0, 100);
+    if (check.type === "opposed" && check.damage && (successScale < 0 || result.id === "cost")) {
+      const received = result.id === "cost" ? Math.ceil(check.damage.received / 2) : check.damage.received;
+      state.health = clamp(state.health - received, 0, 100);
+    } else if (["accident", "world"].includes(event.category) && successScale < 0) {
+      state.health = clamp(state.health + successScale * 3, 0, 100);
     }
     if (["choice", "accident", "world"].includes(event.category)) {
       state.reputation = clamp(state.reputation + Math.max(0, successScale), 0, 100);
@@ -864,11 +1039,16 @@
         name: event.name,
         choice,
         result: result.id,
+        abilityId: check.abilityUse?.ability.id || null,
+        checkType: check.type,
       });
     }
     state.recentEventIds.unshift(event.id);
     state.recentEventIds = state.recentEventIds.slice(0, 24);
-    addHistory(event.name, `选择「${choice}」— ${result.label}。${event.outcome || result.tone}`, event.category);
+    const abilityNote = check.abilityUse ? ` 使用「${check.abilityUse.ability.name}」（权重${check.abilityUse.weight}，+${check.abilityUse.checkBonus}）。` : "";
+    const damageNote = check.damage ? (result.id === "cost" ? ` 目标被压制，但你也承受${Math.ceil(check.damage.received / 2)}点擦伤。` : successScale > 0 ? ` 造成${check.damage.dealt}点有效伤害。` : ` 承受${check.damage.received}点有效伤害。`) : "";
+    const targetTotal = check.type === "opposed" ? check.opponentRoll + check.opponentScore : check.dc;
+    addHistory(event.name, `选择「${choice}」— ${check.typeLabel} ${check.roll}+${check.playerScore} vs ${targetTotal}，${result.label}。${abilityNote}${damageNote}${event.outcome || result.tone}`, event.category);
     if (result.id === "disaster" || result.id === "cost") {
       state.causalQueue.unshift({ title: `处理：${event.name}`, detail: "未解决的代价会在未来月份继续产生影响", months: result.id === "disaster" ? 3 : 1 });
     }
@@ -1015,16 +1195,17 @@
     state.money += state.realm === "human" ? 22000 : 85;
     state.fatigue = clamp(state.fatigue - 28, 0, 100);
     state.health = clamp(state.health + 10, 0, 100);
+    state.spiritResource = clamp(state.spiritResource + Math.round(currentAttributeSheet().effective.capacity * 0.65), 0, currentAttributeSheet().effective.capacity);
     const pressureDelta = Math.floor(Math.random() * 13) - 4 + (state.era === "tybw" ? 3 : 0);
     state.worldPressure = clamp(state.worldPressure + pressureDelta, 5, 100);
     if (state.breakthroughProgress >= 100) {
-      const growthTargets = Object.entries(state.stats).sort((a, b) => a[1] - b[1]);
+      const growthTargets = Object.entries(state.attributes).sort((a, b) => a[1] - b[1]);
       const [targetKey] = growthTargets[0];
       const growthAmount = 2 + Math.round(state.potential.growthRate / 45);
-      state.stats[targetKey] = clamp(state.stats[targetKey] + growthAmount, 0, statPotentialCap(targetKey));
+      state.attributes[targetKey] = clamp(state.attributes[targetKey] + growthAmount, 1, statPotentialCap(targetKey));
       state.spirit = clamp(state.spirit + 2, 0, 120);
       state.breakthroughProgress = 18;
-      addHistory("成长突破", `长期积累完成转化：${targetKey}提高 ${growthAmount}，灵力提高 2。`, "growth");
+      addHistory("成长突破", `长期积累完成转化：${RULES.ATTRIBUTE_DEFS[targetKey].label}提高 ${growthAmount}，灵力提高 2。`, "growth");
     }
     state.causalQueue = state.causalQueue
       .map((item) => ({ ...item, months: item.months - 1 }))
@@ -1190,7 +1371,8 @@
     if (!pool.length) pool = DATA.socialEvents;
     const social = randomItem(pool);
     const event = { ...social, category: "social", outcome: social.outcome };
-    openResolution(event, action, { npc: selectedNpc });
+    const suggested = abilityOptionsForEvent(event, action).find((item) => item.profile.cost <= state.spiritResource && item.weight >= 62);
+    openResolution(event, action, { npc: selectedNpc, abilityId: suggested?.ability.id || null });
   }
 
   function updateRelation(name, resultId, choice) {
@@ -1214,15 +1396,21 @@
       const canons = [...new Set(DATA.abilities.map((item) => item.canon).filter(Boolean))];
       canonSelect.insertAdjacentHTML("beforeend", canons.map((value) => `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`).join(""));
     }
+    const roleSelect = $("#ability-role-filter");
+    if (roleSelect.options.length === 1) {
+      roleSelect.insertAdjacentHTML("beforeend", Object.entries(RULES.ROLE_DEFS).map(([key, value]) => `<option value="${key}">${value.label}</option>`).join(""));
+    }
   }
 
   function filteredAbilities() {
     const query = $("#ability-search").value.trim().toLowerCase();
     const system = $("#ability-system-filter").value;
     const canon = $("#ability-canon-filter").value;
+    const role = $("#ability-role-filter").value;
     return DATA.abilities.filter((ability) => {
       if (system !== "all" && ability.sheet !== system) return false;
       if (canon !== "all" && ability.canon !== canon) return false;
+      if (role !== "all" && RULES.classifyAbility(ability, 50).primary !== role) return false;
       if (!query) return true;
       return `${ability.id} ${ability.name} ${ability.mechanism} ${ability.effect} ${ability.note}`.toLowerCase().includes(query);
     });
@@ -1231,14 +1419,22 @@
   function renderAbilities() {
     if (!state) return;
     const matches = filteredAbilities();
-    $("#ability-results").innerHTML = matches.slice(0, abilityPageSize).map((ability) => `
+    $("#ability-results").innerHTML = matches.slice(0, abilityPageSize).map((ability) => {
+      const profile = RULES.classifyAbility(ability, 50);
+      const role = RULES.ROLE_DEFS[profile.primary];
+      const bonuses = Object.entries(profile.bonuses).filter(([, value]) => value).map(([key, value]) => `${RULES.ATTRIBUTE_DEFS[key].short} +${value}`).join(" · ") || "无直接数值加成";
+      const domains = Object.entries(profile.domainWeights).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([key, value]) => `${RULES.DOMAIN_LABELS[key]} ${value}`).join(" · ");
+      return `
       <article class="ability-card">
         <header><span class="ability-id">${escapeHtml(ability.id)} · ${escapeHtml(ability.sheet.replace(/^\d+_/, ""))}</span><span class="canon-tag">${escapeHtml(ability.canon || "未标注")}</span></header>
+        <div class="ability-role-tag" style="--role-color:${role.color}"><b>${role.mark}</b><span>${role.label}</span></div>
         <h3>${escapeHtml(ability.name)}</h3>
         <p>${escapeHtml(ability.mechanism || ability.effect || "暂无机制说明")}</p>
         ${ability.effect ? `<p><b>表现：</b>${escapeHtml(ability.effect)}</p>` : ""}
-        <footer>${escapeHtml(ability.note)}</footer>
-      </article>`).join("");
+        <div class="database-ability-impact"><span>${escapeHtml(bonuses)}</span><small>事件权重：${escapeHtml(domains)}</small></div>
+        <footer>${escapeHtml(ability.note)}${profile.releaseBonus ? ` · 解放命中伤害 +${profile.releaseBonus}` : ""}</footer>
+      </article>`;
+    }).join("");
     $("#ability-more").classList.toggle("hidden", matches.length <= abilityPageSize);
     $("#ability-more").textContent = `显示更多（${Math.min(abilityPageSize, matches.length)} / ${matches.length}）`;
   }
@@ -1348,14 +1544,25 @@
     $("#active-event").addEventListener("click", (event) => {
       const choiceButton = event.target.closest("[data-event-choice]");
       if (choiceButton && pendingEvent) {
-        const choice = pendingEvent.choices[Number(choiceButton.dataset.eventChoice)] || "继续";
-        openResolution(pendingEvent, choice);
+        const choiceIndex = Number(choiceButton.dataset.eventChoice);
+        const choice = pendingEvent.choices[choiceIndex] || "继续";
+        const abilityId = $(`[data-event-ability="${choiceIndex}"]`, $("#active-event"))?.value || null;
+        openResolution(pendingEvent, choice, { abilityId });
       }
       if (event.target.closest("[data-cancel-event]")) {
         pendingEvent = null;
         renderActiveEvent();
         renderActions();
       }
+    });
+    $("#active-event").addEventListener("change", (event) => {
+      const select = event.target.closest("[data-event-ability]");
+      if (!select || !pendingEvent) return;
+      const choiceIndex = Number(select.dataset.eventAbility);
+      const choice = pendingEvent.choices[choiceIndex] || "继续";
+      const check = buildCheck(pendingEvent, choice, { abilityId: select.value || null });
+      const summary = $(`[data-event-choice="${choiceIndex}"] small`, $("#active-event"));
+      if (summary) summary.textContent = `${check.typeLabel} · 预计成功 ${check.distribution.success}%${check.rollMode !== "normal" ? ` · ${check.rollMode === "advantage" ? "优势" : "劣势"}` : ""}`;
     });
     $("#reveal-result").addEventListener("click", revealResolution);
     $$('[data-close-modal], .modal-backdrop').forEach((element) => element.addEventListener("click", closeResolution));
@@ -1373,7 +1580,7 @@
       const button = event.target.closest("[data-social-action]");
       if (button) socialInteraction(button.dataset.socialAction);
     });
-    ["#ability-search", "#ability-system-filter", "#ability-canon-filter"].forEach((selector) => {
+    ["#ability-search", "#ability-system-filter", "#ability-canon-filter", "#ability-role-filter"].forEach((selector) => {
       $(selector).addEventListener(selector === "#ability-search" ? "input" : "change", () => {
         abilityPageSize = 20;
         renderAbilities();
