@@ -551,6 +551,33 @@ select:focus-visible {
   color: var(--muted);
 }
 
+.sidebar-chances {
+  margin-top: 19px;
+  padding: 13px 10px;
+  border: 1px solid var(--line);
+  background: rgba(213, 41, 47, 0.045);
+}
+
+.sidebar-chances div {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 5px 0;
+  font-size: 0.65rem;
+}
+
+.sidebar-chances div + div {
+  border-top: 1px dotted var(--line);
+}
+
+.sidebar-chances span {
+  color: var(--muted);
+}
+
+.sidebar-chances b {
+  color: var(--red);
+}
+
 .content-column {
   min-width: 0;
   padding: 28px clamp(18px, 3vw, 46px) 60px;
@@ -641,6 +668,41 @@ select:focus-visible {
   font-size: 0.67rem;
 }
 
+.quick-status-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.quick-status-item {
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  background: rgba(255, 253, 249, 0.72);
+}
+
+.quick-status-item span,
+.quick-status-item small,
+.quick-status-item strong {
+  display: block;
+}
+
+.quick-status-item span {
+  color: var(--muted);
+  font-size: 0.6rem;
+}
+
+.quick-status-item strong {
+  margin: 3px 0;
+  font-family: var(--font-serif);
+  font-size: 1.05rem;
+}
+
+.quick-status-item small {
+  color: var(--red);
+  font-size: 0.58rem;
+}
+
 .action-section,
 .opportunity-section {
   margin-top: 34px;
@@ -728,6 +790,23 @@ select:focus-visible {
   color: var(--muted);
   font-size: 0.67rem;
   line-height: 1.55;
+}
+
+.action-probability {
+  position: absolute;
+  z-index: 2;
+  right: 10px;
+  bottom: 9px;
+  display: flex;
+  align-items: baseline;
+  gap: 3px;
+  color: var(--red);
+  font-size: 0.6rem;
+  font-weight: 800;
+}
+
+.action-probability b {
+  font-size: 0.85rem;
 }
 
 .opportunity-list {
@@ -820,6 +899,299 @@ select:focus-visible {
   color: var(--white);
   border-color: var(--ink);
   background: var(--ink);
+}
+
+.event-choices button small {
+  display: block;
+  margin-top: 2px;
+  color: var(--red);
+  font-size: 0.56rem;
+}
+
+.event-choices button:hover small {
+  color: #ffb8bb;
+}
+
+/* Detailed player status */
+.status-view-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 20px;
+}
+
+.overall-rank {
+  display: grid;
+  width: 112px;
+  min-height: 112px;
+  flex: 0 0 112px;
+  place-items: center;
+  align-content: center;
+  color: var(--white);
+  background: var(--ink);
+  box-shadow: 6px 6px 0 var(--red);
+}
+
+.overall-rank small,
+.overall-rank span {
+  color: rgba(255, 255, 255, 0.58);
+  font-size: 0.58rem;
+}
+
+.overall-rank strong {
+  margin: -2px 0;
+  color: #ff5258;
+  font-family: var(--font-serif);
+  font-size: 2.8rem;
+}
+
+.status-dashboard {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.dashboard-card {
+  padding: 19px;
+  border: 1px solid var(--line);
+  background: rgba(255, 253, 249, 0.78);
+}
+
+.dashboard-card-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 15px;
+  padding-bottom: 9px;
+  border-bottom: 1px solid var(--line);
+}
+
+.dashboard-card-title span {
+  font-family: var(--font-serif);
+  font-size: 0.95rem;
+  font-weight: 800;
+}
+
+.dashboard-card-title small {
+  color: var(--muted);
+  font-size: 0.6rem;
+}
+
+.core-stat-list,
+.proficiency-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.stat-row {
+  display: grid;
+  grid-template-columns: 48px 1fr 70px;
+  align-items: center;
+  gap: 9px;
+  font-size: 0.66rem;
+}
+
+.stat-row > span {
+  color: #4e4842;
+  font-weight: 700;
+}
+
+.stat-row > b {
+  color: var(--red);
+  font-size: 0.67rem;
+  text-align: right;
+}
+
+.meter {
+  position: relative;
+  height: 7px;
+  overflow: hidden;
+  background: var(--paper-deep);
+}
+
+.meter i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--value);
+  background: var(--red);
+}
+
+.meter .potential-cap {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  left: var(--cap);
+  width: 2px;
+  background: var(--ink);
+}
+
+.potential-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.potential-item {
+  min-height: 88px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  text-align: center;
+}
+
+.potential-item span,
+.potential-item small,
+.potential-item strong {
+  display: block;
+}
+
+.potential-item span {
+  color: var(--muted);
+  font-size: 0.59rem;
+}
+
+.potential-item strong {
+  color: var(--red);
+  font-family: var(--font-serif);
+  font-size: 1.65rem;
+}
+
+.potential-item small {
+  font-size: 0.58rem;
+}
+
+.probability-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.probability-item {
+  padding: 11px 9px;
+  background: var(--paper-deep);
+}
+
+.probability-item.month-odds {
+  border-left: 2px solid var(--gold);
+  background: #f2eadc;
+}
+
+.probability-item span,
+.probability-item strong,
+.probability-item small {
+  display: block;
+}
+
+.probability-item span {
+  color: var(--muted);
+  font-size: 0.58rem;
+}
+
+.probability-item strong {
+  margin: 2px 0;
+  color: var(--red);
+  font-family: var(--font-serif);
+  font-size: 1.15rem;
+}
+
+.probability-item small {
+  font-size: 0.55rem;
+}
+
+.owned-abilities-card,
+.growth-card {
+  grid-column: span 2;
+}
+
+.owned-ability-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.owned-ability {
+  padding: 12px;
+  border: 1px solid var(--line);
+  background: #fffaf3;
+}
+
+.owned-ability header {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.owned-ability h3 {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 0.78rem;
+}
+
+.owned-ability header b {
+  color: var(--red);
+  font-size: 0.62rem;
+}
+
+.owned-ability p {
+  margin: 7px 0 9px;
+  color: var(--muted);
+  font-size: 0.61rem;
+  line-height: 1.5;
+}
+
+.ability-mastery {
+  display: grid;
+  grid-template-columns: 1fr 36px;
+  align-items: center;
+  gap: 7px;
+}
+
+.ability-mastery span {
+  color: var(--red);
+  font-size: 0.58rem;
+  text-align: right;
+}
+
+.empty-ability {
+  grid-column: 1 / -1;
+  padding: 18px;
+  color: var(--muted);
+  border: 1px dashed var(--line);
+  font-size: 0.68rem;
+  text-align: center;
+}
+
+.growth-overview {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+
+.growth-track {
+  padding: 12px;
+  border-left: 3px solid var(--gold);
+  background: #f2eadc;
+}
+
+.growth-track span,
+.growth-track b,
+.growth-track small {
+  display: block;
+}
+
+.growth-track span {
+  color: var(--muted);
+  font-size: 0.59rem;
+}
+
+.growth-track b {
+  margin: 3px 0;
+  font-family: var(--font-serif);
+}
+
+.growth-track small {
+  font-size: 0.58rem;
 }
 
 .view-header {
@@ -1415,6 +1787,35 @@ select:focus-visible {
   font-size: 0.61rem;
 }
 
+.check-probabilities {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin: 12px 0;
+}
+
+.check-probabilities div {
+  padding: 8px;
+  background: var(--paper-deep);
+  text-align: center;
+}
+
+.check-probabilities span,
+.check-probabilities strong {
+  display: block;
+}
+
+.check-probabilities span {
+  color: var(--muted);
+  font-size: 0.55rem;
+}
+
+.check-probabilities strong {
+  color: var(--red);
+  font-family: var(--font-serif);
+  font-size: 0.95rem;
+}
+
 .resolved-outcome {
   margin: 14px 0;
   padding: 13px;
@@ -1513,7 +1914,8 @@ select:focus-visible {
 
   .identity-card,
   .ap-block,
-  .status-list {
+  .status-list,
+  .sidebar-chances {
     display: none;
   }
 
@@ -1556,6 +1958,15 @@ select:focus-visible {
     grid-template-columns: 1fr;
   }
 
+  .status-dashboard {
+    grid-template-columns: 1fr;
+  }
+
+  .owned-abilities-card,
+  .growth-card {
+    grid-column: auto;
+  }
+
   .wheel-wrap {
     width: 190px;
     height: 190px;
@@ -1595,8 +2006,16 @@ select:focus-visible {
   .opportunity-list,
   .npc-list,
   .relation-bars,
-  .ability-toolbar {
+  .ability-toolbar,
+  .quick-status-strip,
+  .owned-ability-list,
+  .growth-overview {
     grid-template-columns: 1fr;
+  }
+
+  .potential-grid,
+  .probability-grid {
+    grid-template-columns: repeat(2, 1fr);
   }
 
   .action-card {
