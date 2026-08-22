@@ -670,7 +670,7 @@ select:focus-visible {
 
 .quick-status-strip {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 8px;
   margin-top: 14px;
 }
@@ -876,9 +876,44 @@ select:focus-visible {
 }
 
 .event-choices {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
+}
+
+.event-choice-row {
+  display: grid;
+  gap: 5px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  background: rgba(241, 234, 223, 0.55);
+}
+
+.event-choice-row label {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 8px;
+}
+
+.event-choice-row label span {
+  color: var(--muted);
+  font-size: 0.58rem;
+}
+
+.event-choice-row select {
+  min-width: 0;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  background: var(--white);
+  font-size: 0.61rem;
+}
+
+.event-choice-row > button {
+  width: 100%;
+  min-height: 52px;
+  text-align: left;
 }
 
 .event-choices button,
@@ -993,6 +1028,19 @@ select:focus-visible {
   font-size: 0.66rem;
 }
 
+.attribute-row {
+  grid-template-columns: 110px 1fr 116px;
+}
+
+.attribute-row > span small,
+.attribute-row > b small {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 0.52rem;
+  font-weight: 500;
+}
+
 .stat-row > span {
   color: #4e4842;
   font-weight: 700;
@@ -1105,9 +1153,58 @@ select:focus-visible {
 }
 
 .owned-ability-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ability-role-group {
+  border: 1px solid var(--line);
+  background: rgba(255, 250, 243, 0.55);
+}
+
+.ability-role-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-left: 5px solid var(--role-color);
+  background: var(--paper-deep);
+}
+
+.ability-role-header > span {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  color: var(--white);
+  background: var(--role-color);
+  font-family: var(--font-serif);
+  font-weight: 900;
+}
+
+.ability-role-header h3,
+.ability-role-header small {
+  display: block;
+  margin: 0;
+}
+
+.ability-role-header h3 {
+  font-family: var(--font-serif);
+  font-size: 0.82rem;
+}
+
+.ability-role-header small {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 0.56rem;
+}
+
+.ability-role-items {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
+  padding: 8px;
 }
 
 .owned-ability {
@@ -1136,6 +1233,58 @@ select:focus-visible {
 .owned-ability p {
   margin: 7px 0 9px;
   color: var(--muted);
+  font-size: 0.61rem;
+  line-height: 1.5;
+}
+
+.ability-impact {
+  display: grid;
+  gap: 3px;
+  margin-bottom: 9px;
+  padding: 7px 8px;
+  border-left: 2px solid var(--red);
+  background: var(--paper-deep);
+}
+
+.ability-impact span {
+  color: #3e3933;
+  font-size: 0.59rem;
+  font-weight: 800;
+}
+
+.ability-impact small {
+  color: var(--muted);
+  font-size: 0.54rem;
+}
+
+.attribute-scale-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.attribute-scale-list span {
+  padding: 7px 8px;
+  background: var(--paper-deep);
+  font-size: 0.59rem;
+}
+
+.attribute-scale-list b {
+  display: inline-block;
+  min-width: 48px;
+  color: var(--red);
+}
+
+.combat-rule-list {
+  display: grid;
+  gap: 7px;
+}
+
+.combat-rule-list p {
+  margin: 0;
+  padding: 7px 9px;
+  border-left: 2px solid var(--gold);
+  background: #f2eadc;
   font-size: 0.61rem;
   line-height: 1.5;
 }
@@ -1439,7 +1588,7 @@ select:focus-visible {
 /* Abilities */
 .ability-toolbar {
   display: grid;
-  grid-template-columns: 2fr 1fr 1fr;
+  grid-template-columns: 2fr repeat(3, 1fr);
   gap: 8px;
   margin-bottom: 13px;
 }
@@ -1466,6 +1615,46 @@ select:focus-visible {
   margin: 6px 0 8px;
   font-family: var(--font-serif);
   font-size: 0.95rem;
+}
+
+.ability-role-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 9px;
+  padding: 3px 7px 3px 3px;
+  color: var(--role-color);
+  border: 1px solid color-mix(in srgb, var(--role-color) 35%, transparent);
+  font-size: 0.57rem;
+  font-weight: 800;
+}
+
+.ability-role-tag b {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  color: var(--white);
+  background: var(--role-color);
+}
+
+.database-ability-impact {
+  display: grid;
+  gap: 3px;
+  margin-top: 9px;
+  padding: 7px 8px;
+  background: var(--paper-deep);
+}
+
+.database-ability-impact span {
+  color: #3f3933;
+  font-size: 0.59rem;
+  font-weight: 800;
+}
+
+.database-ability-impact small {
+  color: var(--muted);
+  font-size: 0.55rem;
 }
 
 .ability-id,
@@ -1755,7 +1944,7 @@ select:focus-visible {
 
 .check-equation div {
   display: flex;
-  min-width: 72px;
+  min-width: 88px;
   flex-direction: column;
   padding: 10px;
   border: 1px solid var(--line);
@@ -1771,6 +1960,7 @@ select:focus-visible {
 .check-equation strong {
   font-family: var(--font-serif);
   font-size: 1.2rem;
+  overflow-wrap: anywhere;
 }
 
 .check-factors {
@@ -1878,6 +2068,10 @@ select:focus-visible {
   .action-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
+
+  .quick-status-strip {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 840px) {
@@ -1937,6 +2131,10 @@ select:focus-visible {
 
   .action-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .event-choices {
+    grid-template-columns: 1fr;
   }
 
   .ability-results,
@@ -2008,9 +2206,13 @@ select:focus-visible {
   .relation-bars,
   .ability-toolbar,
   .quick-status-strip,
-  .owned-ability-list,
+  .ability-role-items,
   .growth-overview {
     grid-template-columns: 1fr;
+  }
+
+  .attribute-row {
+    grid-template-columns: 90px 1fr 92px;
   }
 
   .potential-grid,
