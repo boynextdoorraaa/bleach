@@ -158,6 +158,7 @@
 
           <nav id="main-nav" class="main-nav" aria-label="主要功能">
             <button class="active" data-view="life" type="button"><span>◈</span>人生</button>
+            <button data-view="status" type="button"><span>魂</span>详细状态</button>
             <button data-view="map" type="button"><span>⌖</span>地图</button>
             <button data-view="social" type="button"><span>◎</span>人物</button>
             <button data-view="abilities" type="button"><span>刃</span>能力库</button>
@@ -165,11 +166,18 @@
           </nav>
 
           <section class="status-list">
-            <div><span>身体</span><b id="status-health">正常</b></div>
-            <div><span>疲劳</span><b id="status-fatigue">精力充足</b></div>
-            <div><span>灵力</span><b id="status-spirit">微弱</b></div>
-            <div><span>名声</span><b id="status-reputation">无人知晓</b></div>
+            <div><span>生命</span><b id="status-health">100 / 100</b></div>
+            <div><span>疲劳</span><b id="status-fatigue">8 / 100</b></div>
+            <div><span>灵力</span><b id="status-spirit">18</b></div>
+            <div><span>名声</span><b id="status-reputation">0</b></div>
             <div><span>资金</span><b id="status-money">¥ 8,000</b></div>
+          </section>
+
+          <section class="sidebar-chances">
+            <span class="section-kicker">LIVE ODDS</span>
+            <div><span>觉醒</span><b id="sidebar-awaken-chance">0%</b></div>
+            <div><span>危险遭遇</span><b id="sidebar-encounter-chance">0%</b></div>
+            <div><span>世界卷入</span><b id="sidebar-involvement-chance">0%</b></div>
           </section>
         </aside>
 
@@ -189,6 +197,8 @@
             </div>
 
             <div id="active-event" class="active-event hidden"></div>
+
+            <section id="quick-status-strip" class="quick-status-strip"></section>
 
             <section class="action-section">
               <div class="section-title-row">
@@ -210,6 +220,49 @@
               </div>
               <div id="opportunity-list" class="opportunity-list"></div>
             </section>
+          </section>
+
+          <section id="status-view" class="view">
+            <div class="view-header status-view-header">
+              <div>
+                <span class="section-kicker">SOUL PROFILE</span>
+                <h1>详细角色状态</h1>
+                <p>所有数值都会根据训练、伤势、疲劳、地点、关系和世界局势实时改变。</p>
+              </div>
+              <div id="overall-rank" class="overall-rank"><small>综合评价</small><strong>C</strong><span>尚未成型</span></div>
+            </div>
+
+            <div class="status-dashboard">
+              <section class="dashboard-card core-stat-card">
+                <div class="dashboard-card-title"><span>核心属性</span><small>当前值 / 潜在上限</small></div>
+                <div id="core-stat-list" class="core-stat-list"></div>
+              </section>
+
+              <section class="dashboard-card potential-card">
+                <div class="dashboard-card-title"><span>灵魂潜质</span><small>先天倾向</small></div>
+                <div id="potential-grid" class="potential-grid"></div>
+              </section>
+
+              <section class="dashboard-card probability-card">
+                <div class="dashboard-card-title"><span>实时概率</span><small>按当前状态估算</small></div>
+                <div id="probability-grid" class="probability-grid"></div>
+              </section>
+
+              <section class="dashboard-card proficiency-card">
+                <div class="dashboard-card-title"><span>技能熟练度</span><small>0–8级</small></div>
+                <div id="proficiency-list" class="proficiency-list"></div>
+              </section>
+
+              <section class="dashboard-card owned-abilities-card">
+                <div class="dashboard-card-title"><span>我的能力</span><small id="owned-ability-count">0项</small></div>
+                <div id="owned-ability-list" class="owned-ability-list"></div>
+              </section>
+
+              <section class="dashboard-card growth-card">
+                <div class="dashboard-card-title"><span>成长与突破</span><small>长期进度</small></div>
+                <div id="growth-overview" class="growth-overview"></div>
+              </section>
+            </div>
           </section>
 
           <section id="map-view" class="view">
@@ -299,6 +352,7 @@
               <div><span>动态 DC</span><strong id="dc-value">10</strong></div>
             </div>
             <div id="check-factors" class="check-factors"></div>
+            <div id="check-probabilities" class="check-probabilities"></div>
             <div id="resolved-outcome" class="resolved-outcome hidden"></div>
             <button id="reveal-result" class="primary-button" type="button">停止并揭晓</button>
           </div>
