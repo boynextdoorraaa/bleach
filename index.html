@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="基于BLEACH世界规则、能力数据库与事件母库制作的高自由度互动人生模拟器。"
+    />
+    <title>BLEACH · 灵魂人生模拟器</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600;700;900&family=Noto+Serif+SC:wght@600;700;900&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="paper-noise" aria-hidden="true"></div>
+
+    <main id="creator-screen" class="creator-screen">
+      <header class="creator-hero">
+        <div class="eyebrow">THE SOUL IS THE WORLD</div>
+        <h1><span>BLEACH</span> 灵魂人生模拟器</h1>
+        <p>
+          世界不会围着你运转。选择一段人生，遵守这个世界的规则，然后承担每一次选择留下的因果。
+        </p>
+        <div class="database-badges" id="database-badges"></div>
+      </header>
+
+      <section class="creator-panel manga-panel">
+        <div class="section-kicker">01 / LIFE ORIGIN</div>
+        <h2>选择人生创建方式</h2>
+        <div class="mode-grid" role="radiogroup" aria-label="人生创建方式">
+          <button class="mode-card active" data-mode="free" type="button">
+            <span class="mode-number">壹</span>
+            <span class="mode-copy">
+              <strong>自由人生创建</strong>
+              <small>自行决定时代、世界、种族、背景与成长方向；系统检查世界观合法性。</small>
+            </span>
+          </button>
+          <button class="mode-card" data-mode="random" type="button">
+            <span class="mode-number">贰</span>
+            <span class="mode-copy">
+              <strong>完全随机穿越</strong>
+              <small>时代 → 世界 → 种族 → 身份级联随机。稀有身份不会等概率出现。</small>
+            </span>
+          </button>
+        </div>
+
+        <form id="creator-form" class="creator-form">
+          <label>
+            <span>姓名</span>
+            <input id="name-input" maxlength="16" value="无名旅者" autocomplete="off" />
+          </label>
+          <label>
+            <span>Canon 资料层</span>
+            <select id="canon-select">
+              <option value="manga-anime">漫画核心 + TYBW 动画</option>
+              <option value="manga">仅漫画核心</option>
+              <option value="expanded">漫画 + 动画 + 官方小说</option>
+            </select>
+          </label>
+          <label class="free-field">
+            <span>时代</span>
+            <select id="era-select">
+              <option value="substitute">2001 · 死神代行篇前夕</option>
+              <option value="soul-society">2001 · 尸魂界篇</option>
+              <option value="arrancar">2002 · 破面篇</option>
+              <option value="fullbring">2003 · 完现术篇</option>
+              <option value="tybw">2003 · 千年血战篇</option>
+            </select>
+          </label>
+          <label class="free-field">
+            <span>出生世界</span>
+            <select id="realm-select">
+              <option value="human">现世 · 空座町</option>
+              <option value="soul">尸魂界 · 流魂街</option>
+              <option value="seireitei">尸魂界 · 瀞灵廷</option>
+              <option value="hueco">虚圈</option>
+              <option value="wandenreich">见えざる帝国</option>
+            </select>
+          </label>
+          <label class="free-field">
+            <span>种族 / 力量方向</span>
+            <select id="race-select"></select>
+          </label>
+          <label class="free-field">
+            <span>生活背景</span>
+            <select id="background-select"></select>
+          </label>
+          <label>
+            <span>模拟风格</span>
+            <select id="tone-select">
+              <option value="realistic">极度现实</option>
+              <option value="dramatic">现实 + 戏剧性偶然</option>
+              <option value="canon">原作风格现实主义</option>
+            </select>
+          </label>
+        </form>
+
+        <div id="random-preview" class="random-preview hidden">
+          <span>级联随机将只在确认后进行一次。</span>
+          <strong>你不会因为随机模式自动获得稀有血统、原作人物关系或强大能力。</strong>
+        </div>
+
+        <button id="start-button" class="primary-button slash-button" type="button">
+          <span>让世界开始运转</span>
+        </button>
+        <div class="creator-secondary-actions">
+          <button id="continue-button" class="secondary-button hidden" type="button">继续上一次人生</button>
+          <button id="import-creator-button" class="secondary-button" type="button">导入存档 JSON</button>
+        </div>
+      </section>
+
+      <footer class="creator-footer">
+        非商业同人原型 · 数据来自用户提供的设计文档与能力数据库
+      </footer>
+    </main>
+
+    <main id="game-screen" class="game-screen hidden">
+      <header class="topbar">
+        <div class="brand-lockup">
+          <span class="brand-mark">魂</span>
+          <div>
+            <strong>BLEACH</strong>
+            <small>灵魂人生模拟器</small>
+          </div>
+        </div>
+        <div class="date-strip">
+          <span id="hud-date">2001年4月</span>
+          <b id="hud-phase">死神代行篇前夕</b>
+          <span id="hud-location">现世 · 空座町</span>
+        </div>
+        <div class="top-actions">
+          <button id="save-button" class="icon-button" title="保存到浏览器" type="button">保存</button>
+          <button id="export-button" class="icon-button" title="导出存档" type="button">导出</button>
+          <button id="reset-button" class="icon-button danger" title="结束当前人生" type="button">重开</button>
+        </div>
+      </header>
+
+      <div class="game-layout">
+        <aside class="sidebar left-sidebar">
+          <section class="identity-card">
+            <div class="avatar-sigil" id="avatar-sigil">魂</div>
+            <div>
+              <small id="player-origin">现世人类</small>
+              <h2 id="player-name">无名旅者</h2>
+              <span id="player-role">普通学生</span>
+            </div>
+          </section>
+
+          <section class="ap-block">
+            <div class="block-heading"><span>本月行动点</span><strong id="ap-value">10 / 10</strong></div>
+            <div id="ap-pips" class="ap-pips"></div>
+          </section>
+
+          <nav id="main-nav" class="main-nav" aria-label="主要功能">
+            <button class="active" data-view="life" type="button"><span>◈</span>人生</button>
+            <button data-view="map" type="button"><span>⌖</span>地图</button>
+            <button data-view="social" type="button"><span>◎</span>人物</button>
+            <button data-view="abilities" type="button"><span>刃</span>能力库</button>
+            <button data-view="history" type="button"><span>册</span>人生记录</button>
+          </nav>
+
+          <section class="status-list">
+            <div><span>身体</span><b id="status-health">正常</b></div>
+            <div><span>疲劳</span><b id="status-fatigue">精力充足</b></div>
+            <div><span>灵力</span><b id="status-spirit">微弱</b></div>
+            <div><span>名声</span><b id="status-reputation">无人知晓</b></div>
+            <div><span>资金</span><b id="status-money">¥ 8,000</b></div>
+          </section>
+        </aside>
+
+        <section class="content-column">
+          <section id="life-view" class="view active">
+            <div class="world-banner">
+              <div>
+                <span class="section-kicker">CURRENT WORLD</span>
+                <h1 id="world-headline">四月的空座町，风里有陌生的灵压。</h1>
+                <p id="world-summary">世界正在运行。你目前只是无数生命中的一个。</p>
+              </div>
+              <div class="world-pressure">
+                <small>世界压力</small>
+                <strong id="pressure-value">12</strong>
+                <span id="pressure-label">平静</span>
+              </div>
+            </div>
+
+            <div id="active-event" class="active-event hidden"></div>
+
+            <section class="action-section">
+              <div class="section-title-row">
+                <div>
+                  <span class="section-kicker">YOUR INTENT</span>
+                  <h2>这次，你打算做什么？</h2>
+                </div>
+                <span class="section-note">每月 10 个主动行动槽</span>
+              </div>
+              <div id="action-grid" class="action-grid"></div>
+            </section>
+
+            <section class="opportunity-section">
+              <div class="section-title-row">
+                <div>
+                  <span class="section-kicker">WORLD SIGNALS</span>
+                  <h2>当前机会与传闻</h2>
+                </div>
+              </div>
+              <div id="opportunity-list" class="opportunity-list"></div>
+            </section>
+          </section>
+
+          <section id="map-view" class="view">
+            <div class="view-header">
+              <span class="section-kicker">LAYERED WORLD MAP</span>
+              <h1>已知世界</h1>
+              <p>你只能前往自己知道路线、具备交通方式并拥有必要权限的地点。</p>
+            </div>
+            <div id="map-grid" class="map-grid"></div>
+          </section>
+
+          <section id="social-view" class="view">
+            <div class="view-header">
+              <span class="section-kicker">CHARACTER RELATIONS</span>
+              <h1>人物与关系</h1>
+              <p>关系不是一个万能好感值。信任、尊重、熟悉与紧张会分别变化。</p>
+            </div>
+            <div class="social-layout">
+              <div id="npc-list" class="npc-list"></div>
+              <div id="npc-detail" class="npc-detail empty-state">
+                <span class="empty-icon">◎</span>
+                <p>选择一名你认识的人。</p>
+              </div>
+            </div>
+          </section>
+
+          <section id="abilities-view" class="view">
+            <div class="view-header">
+              <span class="section-kicker">ABILITY DATABASE</span>
+              <h1>能力体系总库</h1>
+              <p>正史、官方补充、合理推演与原创扩展均保留证据标签。</p>
+            </div>
+            <div class="ability-toolbar">
+              <input id="ability-search" placeholder="搜索名称、机制、ID……" />
+              <select id="ability-system-filter">
+                <option value="all">全部体系</option>
+              </select>
+              <select id="ability-canon-filter">
+                <option value="all">全部证据层级</option>
+              </select>
+            </div>
+            <div id="ability-results" class="ability-results"></div>
+            <button id="ability-more" class="secondary-button" type="button">显示更多</button>
+          </section>
+
+          <section id="history-view" class="view">
+            <div class="view-header">
+              <span class="section-kicker">IRREVERSIBLE HISTORY</span>
+              <h1>你留下的世界线</h1>
+              <p>已经结算的结果会写入历史；重新读取不会重掷同一事件。</p>
+            </div>
+            <div id="full-history" class="full-history"></div>
+          </section>
+        </section>
+
+        <aside class="sidebar right-sidebar">
+          <section class="timeline-card">
+            <div class="block-heading"><span>最近发生</span><button id="clear-log" type="button">清空显示</button></div>
+            <div id="timeline-log" class="timeline-log"></div>
+          </section>
+          <section class="causal-card">
+            <span class="section-kicker">CAUSAL QUEUE</span>
+            <h3>世界因果</h3>
+            <div id="causal-list"></div>
+          </section>
+        </aside>
+      </div>
+    </main>
+
+    <div id="resolution-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="resolution-title">
+      <div class="modal-backdrop"></div>
+      <section class="resolution-card">
+        <button class="modal-close" data-close-modal type="button" aria-label="关闭">×</button>
+        <span class="section-kicker">DYNAMIC CHECK</span>
+        <h2 id="resolution-title">命运正在结算</h2>
+        <div class="resolution-body">
+          <div class="wheel-wrap">
+            <div id="result-wheel" class="result-wheel"><span id="wheel-core">?</span></div>
+            <div class="wheel-pointer"></div>
+          </div>
+          <div class="check-panel">
+            <div class="check-equation">
+              <div><span>D20</span><strong id="roll-value">?</strong></div>
+              <b>+</b>
+              <div><span>修正</span><strong id="modifier-value">+0</strong></div>
+              <b>vs</b>
+              <div><span>动态 DC</span><strong id="dc-value">10</strong></div>
+            </div>
+            <div id="check-factors" class="check-factors"></div>
+            <div id="resolved-outcome" class="resolved-outcome hidden"></div>
+            <button id="reveal-result" class="primary-button" type="button">停止并揭晓</button>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <input id="import-input" type="file" accept="application/json" hidden />
+    <script src="data.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
