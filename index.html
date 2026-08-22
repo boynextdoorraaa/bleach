@@ -234,7 +234,7 @@
 
             <div class="status-dashboard">
               <section class="dashboard-card core-stat-card">
-                <div class="dashboard-card-title"><span>核心属性</span><small>当前值 / 潜在上限</small></div>
+                <div class="dashboard-card-title"><span>八项核心属性</span><small>基础 + 能力 + 状态 = 有效值</small></div>
                 <div id="core-stat-list" class="core-stat-list"></div>
               </section>
 
@@ -253,8 +253,28 @@
                 <div id="proficiency-list" class="proficiency-list"></div>
               </section>
 
+              <section class="dashboard-card attribute-scale-card">
+                <div class="dashboard-card-title"><span>属性分数标尺</span><small>d100 · 1–100</small></div>
+                <div class="attribute-scale-list">
+                  <span><b>1–20</b>普通凡人</span><span><b>21–40</b>微弱灵能 / 实习</span>
+                  <span><b>41–60</b>普通战斗人员</span><span><b>61–75</b>席官 / 大虚级</span>
+                  <span><b>76–88</b>副队长级</span><span><b>89–95</b>队长级</span>
+                  <span><b>96–100</b>天花板级</span>
+                </div>
+              </section>
+
+              <section class="dashboard-card combat-rules-card">
+                <div class="dashboard-card-title"><span>d100 检定规则</span><small>事件会自动选择类型</small></div>
+                <div class="combat-rule-list">
+                  <p><b>对抗</b>双方 d100 + 对应属性，高者获胜。</p>
+                  <p><b>豁免</b>d100 + 灵魂抗性 + 人格意志，对抗动态 DC。</p>
+                  <p><b>伤害</b>破坏力 ÷ 4，目标以肉体强度 ÷ 4 减伤。</p>
+                  <p><b>优势 / 劣势</b>投两次 d100，分别取高 / 取低。</p>
+                </div>
+              </section>
+
               <section class="dashboard-card owned-abilities-card">
-                <div class="dashboard-card-title"><span>我的能力</span><small id="owned-ability-count">0项</small></div>
+                <div class="dashboard-card-title"><span>我的能力 · 按用途分类</span><small id="owned-ability-count">0项</small></div>
                 <div id="owned-ability-list" class="owned-ability-list"></div>
               </section>
 
@@ -303,6 +323,9 @@
               <select id="ability-canon-filter">
                 <option value="all">全部证据层级</option>
               </select>
+              <select id="ability-role-filter">
+                <option value="all">全部能力职责</option>
+              </select>
             </div>
             <div id="ability-results" class="ability-results"></div>
             <button id="ability-more" class="secondary-button" type="button">显示更多</button>
@@ -345,11 +368,11 @@
           </div>
           <div class="check-panel">
             <div class="check-equation">
-              <div><span>D20</span><strong id="roll-value">?</strong></div>
+              <div><span id="roll-type-label">D100</span><strong id="roll-value">?</strong></div>
               <b>+</b>
-              <div><span>修正</span><strong id="modifier-value">+0</strong></div>
+              <div><span id="modifier-label">属性 + 能力</span><strong id="modifier-value">+0</strong></div>
               <b>vs</b>
-              <div><span>动态 DC</span><strong id="dc-value">10</strong></div>
+              <div><span id="target-label">动态 DC</span><strong id="dc-value">?</strong></div>
             </div>
             <div id="check-factors" class="check-factors"></div>
             <div id="check-probabilities" class="check-probabilities"></div>
@@ -366,6 +389,7 @@
     <script src="data/events-1.js"></script>
     <script src="data/abilities-1.js"></script>
     <script src="data/abilities-2.js"></script>
+    <script src="data/rules.js"></script>
     <script src="app.js"></script>
   </body>
 </html>
