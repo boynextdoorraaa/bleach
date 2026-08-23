@@ -3,6 +3,7 @@
 
   const DATA = window.BLEACH_DATA;
   const RULES = window.BLEACH_RULES;
+  const COMBAT = window.BLEACH_COMBAT;
   const SAVE_KEY = "bleach-life-simulator-v1";
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -69,6 +70,7 @@
   let selectedNpc = null;
   let abilityPageSize = 20;
   let toastTimer = null;
+  let combatSelection = { action: "attack", movement: "hold", defense: "dodge" };
 
   function escapeHtml(value) {
     return String(value ?? "")
@@ -124,7 +126,7 @@
 
   function ensureStateSchema(target) {
     const seed = target.id || `${target.name}-${target.race}-${target.year}`;
-    target.version = 3;
+    target.version = 4;
     const createdPotential = !target.potential;
     target.potential ||= {
       spiritCeiling: seededNumber(seed, "spirit"),
@@ -161,6 +163,11 @@
     target.spiritResource ??= target.attributes.capacity;
     target.spiritResource = clamp(target.spiritResource, 0, 100);
     target.monthlyRecord ||= [];
+    target.combatInjuries ||= [];
+    target.combatPreference ||= "balanced";
+    target.activeCombat ??= null;
+    target.flags ||= {};
+    target.flags.enemyIntel ||= {};
     target.worldArc ||= {
       title: {
         substitute: "现世灵异异常与死神代行暗线",
@@ -288,7 +295,7 @@
       };
     });
     return ensureStateSchema({
-      version: 3,
+      version: 4,
       id: uid("life"),
       name: options.name || "无名旅者",
       mode: options.mode,
@@ -369,6 +376,7 @@
     $("#game-screen").classList.remove("hidden");
     renderAll();
     renderActiveEvent();
+    renderCombat();
   }
 
   function stateDate() {
@@ -434,6 +442,7 @@
     prepareAbilityFilters();
     renderAbilities();
     renderHistory();
+    renderCombat();
   }
 
   function renderHud() {
@@ -742,6 +751,248 @@
       .map((ability) => RULES.scoreAbilityForEvent(ability, state.abilityMastery[ability.id] || 0, event, choice))
       .filter((item) => item.weight >= 18 && item.profile.potency > 0)
       .sort((a, b) => (b.weight + b.checkBonus * 3) - (a.weight + a.checkBonus * 3));
+  }
+
+  function combatContext() {
+    return { state, ownedAbilities: ownedAbilityRecords() };
+  }
+
+  function startCombat(event, choice) {
+    if (!COMBAT) return showToast("战斗规则模块尚未加载，请刷新页面重试。");
+    state.activeCombat = COMBAT.createCombat({ state, event, choice, abilities: DATA.abilities });
+    combatSelection = { action: "attack", movement: "hold", defense: "dodge" };
+    saveGame(false);
+    renderCombat();
+  }
+
+  function setCombatSelection(kind, value) {
+    combatSelection[kind] = value;
+    $$(`[data-combat-${kind}]`).forEach((button) => button.classList.toggle("active", button.dataset[`combat${kind[0].toUpperCase()}${kind.slice(1)}`] === value));
+    if (kind === "action") $("#combat-ability-select").disabled = value !== "ability";
+    renderCombatForecast();
+  }
+
+  function opposedSuccessChance(attackerScore, defenderScore) {
+    let wins = 0;
+    for (let attack = 1; attack <= 100; attack += 1) {
+      for (let defense = 1; defense <= 100; defense += 1) {
+        if (attack + attackerScore >= defense + defenderScore) wins += 1;
+      }
+    }
+    return Math.round(wins / 100);
+  }
+
+  function renderCombatForecast() {
+    const panel = $("#combat-action-forecast");
+    const combat = state?.activeCombat;
+    if (!panel || !combat || combat.status !== "ACTIVE") return;
+    const attrs = currentAttributeSheet().effective;
+    const combatSkill = (state.skills.combat || 0) * 2;
+    let score = 0;
+    let target = 0;
+    let label = "无需检定";
+    let chance = 100;
+    let note = "行动仍可能改变敌方下一步选择";
+    if (combatSelection.action === "attack" || combatSelection.action === "ability") {
+      const ability = ownedAbilityRecords().find((item) => item.id === combatSelection.abilityId);
+      const profile = ability ? RULES.classifyAbility(ability, state.abilityMastery[ability.id] || 0) : null;
+      if (combatSelection.action === "ability" && !ability) {
+        label = "尚未选择能力";
+        chance = 0;
+        note = "选择能力后显示基准命中率";
+      } else if (profile?.primary === "release") {
+        label = "形态切换";
+        chance = combat.player.reiryokuCurrent >= profile.cost ? 100 : 0;
+        note = `发动消耗 ${profile.cost}，之后每回合持续消耗`;
+      } else {
+        score = attrs.power + combatSkill + (profile?.potency || 0);
+        target = Math.max(combat.enemy.attributes.mobility, combat.enemy.attributes.body, combat.enemy.attributes.power) + combat.enemy.skill * 2;
+        const validRange = ability ? COMBAT.abilityRange(ability, profile).includes(combat.distance) : ["close", "near"].includes(combat.distance);
+        chance = validRange ? opposedSuccessChance(score, target) : combatSelection.movement === "hold" ? 0 : opposedSuccessChance(attrs.mobility + combatSkill, combat.enemy.attributes.mobility + combat.enemy.skill * 2);
+        label = validRange ? "基准命中" : combatSelection.movement === "hold" ? "当前距离无效" : "先完成机动";
+        note = validRange ? "按敌方可能采用的最佳防御估算" : "移动成功后仍需进入能力有效距离";
+      }
+    } else if (combatSelection.action === "observe") {
+      score = attrs.insight + combatSkill;
+      target = 70 + Math.round(combat.enemy.attributes.insight * 0.6);
+      chance = clamp(101 - (target - score), 0, 100);
+      label = "识破能力";
+      note = "重复观察会积累 +10 修正";
+    } else if (combatSelection.action === "flee") {
+      score = attrs.mobility + combatSkill;
+      target = combat.enemy.attributes.mobility + combat.enemy.skill * 2;
+      chance = opposedSuccessChance(score, target);
+      label = combat.distance === "far" ? "脱离战场" : "扩大距离";
+      note = "通常需要先扩大到远距离";
+    } else if (combatSelection.action === "negotiate") {
+      score = attrs.will + Math.round(attrs.insight * 0.5) + (state.skills.social || 0) * 2;
+      target = combat.enemy.attributes.will + combat.enemy.skill * 2;
+      chance = opposedSuccessChance(score, target);
+      label = "条件被接受";
+      note = "敌方人格与当前目标仍可能否决停战";
+    } else if (combatSelection.action === "protect") {
+      label = "防御站位建立";
+      note = "下一次防御 +10；保护目标仍受战局影响";
+    }
+    panel.innerHTML = `<span>${escapeHtml(label)}</span><strong>${chance}%</strong><small>${escapeHtml(note)} · 不含隐藏能力与部位伤势修正</small>`;
+  }
+
+  function combatCheckMarkup(check) {
+    const notes = check.notes?.length ? `<small>${check.notes.map(escapeHtml).join(" · ")}</small>` : "";
+    if (check.attackerRoll) {
+      const attackRoll = check.attackerRoll.raw.join("/");
+      const defenseRoll = check.defenderRoll.raw.join("/");
+      return `<div class="combat-check-row"><span>对抗</span><b>${attackRoll} + ${check.attackerScore} = ${check.attackerTotal}</b><i>VS</i><b>${defenseRoll} + ${check.defenderScore} = ${check.defenderTotal}</b><strong class="${check.margin >= 0 ? "positive" : "negative"}">${escapeHtml(check.tier.label)} · ${check.margin >= 0 ? "+" : ""}${check.margin}</strong>${notes}</div>`;
+    }
+    const roll = check.roll?.raw?.join("/") || "?";
+    return `<div class="combat-check-row"><span>豁免 / 固定DC</span><b>${roll} + ${check.score} = ${check.total}</b><i>VS</i><b>DC ${check.dc}</b><strong class="${check.margin >= 0 ? "positive" : "negative"}">${escapeHtml(check.tier.label)} · ${check.margin >= 0 ? "+" : ""}${check.margin}</strong>${notes}</div>`;
+  }
+
+  function renderCombat() {
+    const screen = $("#combat-screen");
+    const combat = state?.activeCombat;
+    if (!screen || !combat) {
+      screen?.classList.add("hidden");
+      document.body.classList.remove("combat-active");
+      return;
+    }
+    document.body.classList.add("combat-active");
+    screen.classList.remove("hidden");
+    const distance = COMBAT.DISTANCE_BANDS[combat.distance];
+    const playerWound = COMBAT.woundInfo(combat.player.woundScore);
+    const enemyWound = COMBAT.woundInfo(combat.enemy.woundScore);
+    const enemyInfo = COMBAT.visibleEnemyInfo(combat);
+    const intelLabels = ["完全未知", "确认身份", "确认能力", "理解机制", "掌握弱点"];
+    $("#combat-event-title").textContent = combat.eventName;
+    $("#combat-round").textContent = `第${combat.round}回合`;
+    $("#combat-objective").textContent = `目标：${COMBAT.OBJECTIVES[combat.objective].label}`;
+    $("#combat-distance").textContent = distance.label;
+    $("#combat-distance-mark").textContent = distance.label.slice(0, 1);
+    $("#combat-distance-label").textContent = distance.label;
+    $("#combat-distance-desc").textContent = distance.desc;
+    $("#combat-player-name").textContent = combat.player.name;
+    $("#combat-player-wound").textContent = playerWound.label;
+    $("#combat-player-spirit").textContent = `灵力：${COMBAT.spiritInfo(combat.player.reiryokuCurrent, combat.player.reiryokuMax)}`;
+    $("#combat-player-form").textContent = combat.player.form?.name || "常态";
+    $("#combat-momentum").textContent = COMBAT.momentumLabel(combat.momentum);
+    $("#combat-player-injuries").innerHTML = combat.player.injuries.length
+      ? combat.player.injuries.map((injury) => `<span>${escapeHtml(injury.part)} · ${["", "轻度", "中度", "重度"][injury.severity]}</span>`).join("")
+      : "<small>没有明确部位伤势</small>";
+    const combatAttrs = currentAttributeSheet().effective;
+    $("#combat-player-attributes").innerHTML = ["body", "mobility", "power", "resistance", "insight", "will"]
+      .map((key) => `<span>${RULES.ATTRIBUTE_DEFS[key].short}<b>${combatAttrs[key]}</b></span>`).join("");
+    $("#combat-enemy-name").textContent = enemyInfo.name;
+    $("#combat-enemy-wound").textContent = enemyWound.label;
+    $("#combat-enemy-spirit").textContent = combat.player.intel >= 3 ? `灵力：${COMBAT.spiritInfo(combat.enemy.reiryokuCurrent, combat.enemy.reiryokuMax)}` : "灵力：未知";
+    $("#combat-enemy-ability").textContent = enemyInfo.abilityName;
+    $("#combat-intel-level").textContent = `等级${combat.player.intel} · ${intelLabels[combat.player.intel]}`;
+    $("#combat-enemy-intel").textContent = combat.player.intel >= 4 ? `${enemyInfo.mechanism} 弱点：${enemyInfo.weakness}` : enemyInfo.mechanism;
+    $("#combat-log").innerHTML = combat.log.map((entry, index) => `
+      <article class="combat-log-entry ${index === 0 ? "latest" : ""}">
+        <header><span>${entry.round ? `ROUND ${entry.round}` : "OPENING"}</span><h3>${escapeHtml(entry.title)}</h3></header>
+        <p>${escapeHtml(entry.narration)}</p>
+        ${entry.checks?.length ? `<div class="combat-check-summary">${entry.checks.map((check) => `<span class="${check.margin >= 0 ? "positive" : "negative"}">${escapeHtml(check.tier.label)} ${check.margin >= 0 ? "+" : ""}${check.margin}</span>`).join("")}</div>` : ""}
+      </article>`).join("");
+
+    const abilitySelect = $("#combat-ability-select");
+    const options = ownedAbilityRecords().map((ability) => {
+      const profile = RULES.classifyAbility(ability, state.abilityMastery[ability.id] || 0);
+      const role = RULES.ROLE_DEFS[profile.primary];
+      const ranges = COMBAT.abilityRange(ability, profile).map((id) => COMBAT.DISTANCE_BANDS[id].label).join("/");
+      const disabled = profile.cost > combat.player.reiryokuCurrent;
+      return `<option value="${escapeHtml(ability.id)}" ${combatSelection.abilityId === ability.id ? "selected" : ""} ${disabled ? "disabled" : ""}>${escapeHtml(ability.name)} · ${role.label} · 灵力-${profile.cost} · ${ranges}</option>`;
+    }).join("");
+    abilitySelect.innerHTML = `<option value="">选择已掌握能力</option>${options}`;
+    abilitySelect.disabled = combatSelection.action !== "ability";
+    ["action", "movement", "defense"].forEach((kind) => setCombatSelection(kind, combatSelection[kind]));
+
+    $("#combat-data-mode").checked = Boolean(combat.dataMode);
+    $("#combat-data-drawer").classList.toggle("hidden", !combat.dataMode);
+    $("#combat-check-data").innerHTML = combat.log.flatMap((entry) => (entry.checks || []).map((check) => combatCheckMarkup(check))).slice(0, 12).join("") || "<p>尚无检定数据。</p>";
+    const finished = combat.status !== "ACTIVE";
+    $("#combat-controls").classList.toggle("hidden", finished);
+    $("#combat-finished").classList.toggle("hidden", !finished);
+    $("#combat-auto").disabled = finished;
+    $("#combat-skip").disabled = finished;
+    if (finished) {
+      $("#combat-result-title").textContent = combat.outcome.objectiveSuccess ? "战斗目标达成" : "战斗目标未完全达成";
+      $("#combat-result-summary").textContent = `${combat.outcome.text} 经过${combat.outcome.finishedRound}回合，你处于「${playerWound.label}」，敌方处于「${enemyWound.label}」。结果将在返回后写入人生与世界因果。`;
+    }
+  }
+
+  function submitCombatTurn() {
+    const combat = state?.activeCombat;
+    if (!combat || combat.status !== "ACTIVE") return;
+    const customText = $("#combat-custom-input").value.trim();
+    const input = {
+      ...combatSelection,
+      abilityId: $("#combat-ability-select").value || null,
+      customText,
+    };
+    const result = COMBAT.resolveTurn(combat, input, combatContext());
+    if (!result.ok) return showToast(result.error);
+    combatSelection.abilityId = input.abilityId;
+    $("#combat-custom-input").value = "";
+    saveGame(false);
+    renderCombat();
+  }
+
+  function autoCombat(maxRounds) {
+    const combat = state?.activeCombat;
+    if (!combat || combat.status !== "ACTIVE") return;
+    COMBAT.autoResolve(combat, combatContext(), state.combatPreference, maxRounds);
+    saveGame(false);
+    renderCombat();
+  }
+
+  function finalizeCombat() {
+    const combat = state?.activeCombat;
+    if (!combat || combat.status === "ACTIVE") return;
+    const success = Boolean(combat.outcome.objectiveSuccess);
+    const playerWound = COMBAT.woundInfo(combat.player.woundScore);
+    const enemyWound = COMBAT.woundInfo(combat.enemy.woundScore);
+    state.health = clamp(100 - Math.round(combat.player.woundScore * 0.9), 0, 100);
+    state.spiritResource = clamp(combat.player.reiryokuCurrent, 0, currentAttributeSheet().effective.capacity);
+    state.combatInjuries = combat.player.injuries.slice(0, 12);
+    state.ap = clamp(state.ap - (combat.eventActionCost || 0), 0, state.maxAp);
+    state.fatigue = clamp(state.fatigue + Math.min(28, combat.round * 2) + (combat.eventActionCost || 0) * 4, 0, 100);
+    state.skills.combat = clamp((state.skills.combat || 0) + 1, 0, 8);
+    state.reputation = clamp(state.reputation + (success ? 2 + Math.min(4, Math.floor(combat.enemy.woundScore / 25)) : 0), 0, 100);
+    state.worldArc.deviation = clamp(state.worldArc.deviation + (success ? 2 : -1), -100, 100);
+    state.monthlyRecord.push({
+      category: combat.eventCategory,
+      actionId: combat.eventActionId || "combat",
+      eventId: combat.eventId,
+      name: combat.eventName,
+      choice: combat.eventChoice,
+      result: success ? "success" : "failure",
+      combatRounds: combat.outcome.finishedRound,
+    });
+    if (combat.enemy.abilityId) state.flags.enemyIntel[combat.enemy.abilityId] = Math.max(state.flags.enemyIntel[combat.enemy.abilityId] || 0, combat.player.intel);
+    if (combat.player.injuries.length) state.causalQueue.unshift({ title: "战后伤势处理", detail: `${playerWound.label}与部位损伤会影响后续检定，需要休息或治疗`, months: playerWound.penalty >= 16 ? 3 : 1 });
+    if (combat.player.intel >= 2 && combat.enemy.abilityId) state.causalQueue.unshift({ title: `敌方能力：${combat.enemy.abilityName}`, detail: "已获得的战斗情报可能在后续遭遇中转化为克制与预警", months: 2 });
+    if (!success) state.causalQueue.unshift({ title: `未完全解决：${combat.eventName}`, detail: "敌方目标或战场后果仍会沿因果链继续发展", months: 2 });
+    addHistory(
+      `文字战斗：${combat.eventName}`,
+      `${combat.outcome.text} 目标${success ? "达成" : "未达成"}；${combat.outcome.finishedRound}回合；你：${playerWound.label}，敌方：${enemyWound.label}；剩余灵力${COMBAT.spiritInfo(combat.player.reiryokuCurrent, combat.player.reiryokuMax)}。`,
+      "combat",
+    );
+    const mandatory = combat.mandatory;
+    const settlementType = combat.settlementType || "major";
+    state.activeCombat = null;
+    pendingEvent = null;
+    delete state.pendingMandatoryEvent;
+    document.body.classList.remove("combat-active");
+    $("#combat-screen").classList.add("hidden");
+    combatSelection = { action: "attack", movement: "hold", defense: "dodge" };
+    if (mandatory) {
+      completeMonthAdvance({ settlementType }, { id: success ? "success" : "failure" });
+    } else {
+      saveGame(false);
+      renderAll();
+      renderActiveEvent();
+      showToast("战斗结果已写回人生状态与后续因果。");
+    }
   }
 
   function rollWeights(mode) {
@@ -1516,6 +1767,9 @@
     pendingEvent = null;
     pendingResolution = null;
     selectedNpc = null;
+    combatSelection = { action: "attack", movement: "hold", defense: "dodge" };
+    document.body.classList.remove("combat-active");
+    $("#combat-screen").classList.add("hidden");
     $("#game-screen").classList.add("hidden");
     $("#creator-screen").classList.remove("hidden");
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -1547,7 +1801,8 @@
         const choiceIndex = Number(choiceButton.dataset.eventChoice);
         const choice = pendingEvent.choices[choiceIndex] || "继续";
         const abilityId = $(`[data-event-ability="${choiceIndex}"]`, $("#active-event"))?.value || null;
-        openResolution(pendingEvent, choice, { abilityId });
+        if (COMBAT?.isCombatEvent(pendingEvent, choice)) startCombat(pendingEvent, choice);
+        else openResolution(pendingEvent, choice, { abilityId });
       }
       if (event.target.closest("[data-cancel-event]")) {
         pendingEvent = null;
@@ -1563,6 +1818,32 @@
       const check = buildCheck(pendingEvent, choice, { abilityId: select.value || null });
       const summary = $(`[data-event-choice="${choiceIndex}"] small`, $("#active-event"));
       if (summary) summary.textContent = `${check.typeLabel} · 预计成功 ${check.distribution.success}%${check.rollMode !== "normal" ? ` · ${check.rollMode === "advantage" ? "优势" : "劣势"}` : ""}`;
+    });
+    $("#combat-action-menu").addEventListener("click", (event) => {
+      const button = event.target.closest("[data-combat-action]");
+      if (button) setCombatSelection("action", button.dataset.combatAction);
+    });
+    $("#combat-movement-menu").addEventListener("click", (event) => {
+      const button = event.target.closest("[data-combat-movement]");
+      if (button) setCombatSelection("movement", button.dataset.combatMovement);
+    });
+    $("#combat-defense-menu").addEventListener("click", (event) => {
+      const button = event.target.closest("[data-combat-defense]");
+      if (button) setCombatSelection("defense", button.dataset.combatDefense);
+    });
+    $("#combat-ability-select").addEventListener("change", (event) => {
+      combatSelection.abilityId = event.target.value || null;
+      renderCombatForecast();
+    });
+    $("#combat-submit").addEventListener("click", submitCombatTurn);
+    $("#combat-auto").addEventListener("click", () => autoCombat(14));
+    $("#combat-skip").addEventListener("click", () => autoCombat(28));
+    $("#combat-return").addEventListener("click", finalizeCombat);
+    $("#combat-data-mode").addEventListener("change", (event) => {
+      if (!state?.activeCombat) return;
+      state.activeCombat.dataMode = event.target.checked;
+      saveGame(false);
+      renderCombat();
     });
     $("#reveal-result").addEventListener("click", revealResolution);
     $$('[data-close-modal], .modal-backdrop').forEach((element) => element.addEventListener("click", closeResolution));
