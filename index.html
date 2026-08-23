@@ -355,6 +355,106 @@
       </div>
     </main>
 
+    <section id="combat-screen" class="combat-screen hidden" aria-label="文字叙事战斗模式">
+      <header class="combat-topbar">
+        <div class="combat-title-lockup">
+          <span>戦</span>
+          <div><small>NARRATIVE COMBAT MODE</small><h1 id="combat-event-title">战斗事件</h1></div>
+        </div>
+        <div class="combat-round-meta">
+          <span id="combat-round">第1回合</span><b id="combat-objective">目标：击败</b><span id="combat-distance">中距离</span>
+        </div>
+        <div class="combat-top-actions">
+          <label class="data-mode-toggle"><input id="combat-data-mode" type="checkbox" /> 战斗数据</label>
+          <button id="combat-auto" type="button">自动战斗</button>
+          <button id="combat-skip" type="button">跳过过程</button>
+        </div>
+      </header>
+
+      <div class="combat-shell">
+        <section class="combatant-grid">
+          <article class="combatant-card player-combatant">
+            <span class="combatant-side">YOU</span>
+            <h2 id="combat-player-name">玩家</h2>
+            <div class="combatant-status-line"><b id="combat-player-wound">无伤</b><span id="combat-player-spirit">灵力：充足</span></div>
+            <div class="combatant-detail"><span>形态</span><b id="combat-player-form">常态</b></div>
+            <div class="combatant-detail"><span>主动权</span><b id="combat-momentum">均势</b></div>
+            <div id="combat-player-injuries" class="combat-injury-tags"></div>
+            <div id="combat-player-attributes" class="combat-attribute-strip" aria-label="战斗核心属性"></div>
+          </article>
+
+          <div class="combat-distance-core">
+            <span>当前距离</span><strong id="combat-distance-mark">中</strong><b id="combat-distance-label">中距离</b><small id="combat-distance-desc">10–40m</small>
+          </div>
+
+          <article class="combatant-card enemy-combatant">
+            <span class="combatant-side">ENEMY</span>
+            <h2 id="combat-enemy-name">身份未知的敌人</h2>
+            <div class="combatant-status-line"><b id="combat-enemy-wound">无伤</b><span id="combat-enemy-spirit">灵力：未知</span></div>
+            <div class="combatant-detail"><span>能力</span><b id="combat-enemy-ability">能力未知</b></div>
+            <div class="combatant-detail"><span>情报</span><b id="combat-intel-level">等级0 · 未知</b></div>
+            <p id="combat-enemy-intel">尚未确认能力发动方式。</p>
+          </article>
+        </section>
+
+        <section class="combat-narrative-panel">
+          <div class="combat-section-heading"><div><span>ROUND NARRATION</span><h2>战斗叙事</h2></div><small>规则先结算，文字后描述</small></div>
+          <div id="combat-log" class="combat-log"></div>
+        </section>
+
+        <section id="combat-controls" class="combat-controls">
+          <div class="combat-control-column">
+            <div class="combat-section-heading"><div><span>MAIN ACTION</span><h3>主要行动 ×1</h3></div></div>
+            <div id="combat-action-menu" class="combat-option-grid main-action-grid">
+              <button class="active" data-combat-action="attack" type="button"><b>攻击</b><small>普通斩击 / 白打</small></button>
+              <button data-combat-action="ability" type="button"><b>能力</b><small>发动能力或形态</small></button>
+              <button data-combat-action="observe" type="button"><b>观察</b><small>提高敌方情报</small></button>
+              <button data-combat-action="protect" type="button"><b>保护</b><small>守住目标与站位</small></button>
+              <button data-combat-action="negotiate" type="button"><b>交涉</b><small>按敌方目标判断</small></button>
+              <button data-combat-action="flee" type="button"><b>逃跑</b><small>先创造出口与距离</small></button>
+            </div>
+            <label class="combat-ability-field"><span>本回合能力</span><select id="combat-ability-select"><option value="">选择已掌握能力</option></select></label>
+            <div id="combat-action-forecast" class="combat-action-forecast" aria-live="polite"></div>
+          </div>
+
+          <div class="combat-control-column">
+            <div class="combat-section-heading"><div><span>MOVEMENT</span><h3>移动行动 ×1</h3></div></div>
+            <div id="combat-movement-menu" class="combat-option-grid movement-grid">
+              <button class="active" data-combat-movement="hold" type="button"><b>保持</b><small>不改变距离</small></button>
+              <button data-combat-movement="approach" type="button"><b>逼近</b><small>机动对抗</small></button>
+              <button data-combat-movement="retreat" type="button"><b>拉开</b><small>机动对抗</small></button>
+              <button data-combat-movement="flank" type="button"><b>绕侧</b><small>成功获得位置优势</small></button>
+            </div>
+          </div>
+
+          <div class="combat-control-column">
+            <div class="combat-section-heading"><div><span>REACTION</span><h3>预设反应 ×1</h3></div></div>
+            <div id="combat-defense-menu" class="combat-option-grid defense-grid">
+              <button class="active" data-combat-defense="dodge" type="button"><b>闪避</b><small>机动反应</small></button>
+              <button data-combat-defense="block" type="button"><b>格挡</b><small>稳定守位</small></button>
+              <button data-combat-defense="endure" type="button"><b>硬抗</b><small>保护身后</small></button>
+              <button data-combat-defense="counter" type="button"><b>反击</b><small>高风险高收益</small></button>
+            </div>
+          </div>
+
+          <div class="combat-custom-row">
+            <label><span>自定义战术 · 最多解析3个子动作</span><textarea id="combat-custom-input" rows="2" placeholder="例如：我先假动作，再绕到左后方斩击。"></textarea></label>
+            <button id="combat-submit" class="combat-submit" type="button">执行本回合</button>
+          </div>
+        </section>
+
+        <section id="combat-data-drawer" class="combat-data-drawer hidden">
+          <div class="combat-section-heading"><div><span>DEBUG / CHECK DATA</span><h2>检定数据</h2></div></div>
+          <div id="combat-check-data"></div>
+        </section>
+
+        <section id="combat-finished" class="combat-finished hidden">
+          <span>COMBAT RESULT</span><h2 id="combat-result-title">战斗结束</h2><p id="combat-result-summary"></p>
+          <button id="combat-return" class="primary-button" type="button">写回人生并返回</button>
+        </section>
+      </div>
+    </section>
+
     <div id="resolution-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="resolution-title">
       <div class="modal-backdrop"></div>
       <section class="resolution-card">
@@ -390,6 +490,7 @@
     <script src="data/abilities-1.js"></script>
     <script src="data/abilities-2.js"></script>
     <script src="data/rules.js"></script>
+    <script src="data/combat.js"></script>
     <script src="app.js"></script>
   </body>
 </html>
